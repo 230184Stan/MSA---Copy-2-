@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-pitch-50 text-pitch-900 font-sans antialiased;
+    /* Large base text + high contrast for bright-sunlight readability */
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  /* Larger touch targets on mobile */
+  button, a {
+    @apply select-none;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold
+           px-5 py-3 min-h-[44px] transition-colors focus:outline-none
+           focus-visible:ring-2 focus-visible:ring-pitch-400 focus-visible:ring-offset-2;
+  }
+  .btn-primary {
+    @apply btn bg-pitch-600 text-white hover:bg-pitch-700 active:bg-pitch-800;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-pitch-800 border border-pitch-200 hover:bg-pitch-50;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-pitch-100;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold;
+  }
+  .input {
+    @apply w-full px-3 py-2.5 rounded-xl border border-pitch-200 bg-white text-sm
+           focus:outline-none focus:ring-2 focus:ring-pitch-400 focus:border-transparent
+           transition-colors;
+  }
+}
+
+/* Loading skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  @apply rounded-lg bg-pitch-100;
+  animation: shimmer 1.4s infinite linear;
+  background-size: 800px 100%;
+}
