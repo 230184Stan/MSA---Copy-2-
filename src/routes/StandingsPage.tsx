@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import type { StandingWithTeam } from '@/lib/types';
+import { one } from '@/lib/util';
+
+interface CompOption {
+  id: string;
+  name: string;
+  isCurrent: boolean;
+  level: number;
+}
 import { ArrowLeft, AlertCircle, Trophy } from 'lucide-react';
 
 export default function StandingsPage() {
@@ -9,22 +17,62 @@ export default function StandingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [compName, setCompName] = useState<string>('');
+  const [comps, setComps] = useState<CompOption[]>([]);
+  const [compId, setCompId] = useState<string | null>(null);
+  const [compsLoaded, setCompsLoaded] = useState(false);
 
+  // 1) Load every competition once. Default to the current season's top division.
   useEffect(() => {
+    let cancelled = false;
+    async function loadComps() {
+      const { data, error: err } = await supabase
+        .from('competition')
+        .select('id, name, season:season_id(is_current), division:division_id(level)');
+      if (cancelled) return;
+      if (err) {
+        setError('Could not load competitions. Check your connection and try again.');
+        setLoading(false);
+        return;
+      }
+      const list: CompOption[] = ((data ?? []) as unknown[]).map((r) => {
+        const row = r as {
+          id: string;
+          name: string;
+          season: { is_current: boolean } | { is_current: boolean }[] | null;
+          division: { level: number | null } | { level: number | null }[] | null;
+        };
+        return {
+          id: row.id,
+          name: row.name,
+          isCurrent: !!one(row.season)?.is_current,
+          level: one(row.division)?.level ?? 99,
+        };
+      });
+      list.sort(
+        (a, b) =>
+          Number(b.isCurrent) - Number(a.isCurrent) ||
+          a.level - b.level ||
+          a.name.localeCompare(b.name)
+      );
+      setComps(list);
+      setCompId(list[0]?.id ?? null);
+      setCompsLoaded(true);
+    }
+    loadComps();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 2) Load the table for the chosen competition.
+  useEffect(() => {
+    if (!compsLoaded) return;
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
 
-      // Get the current season's competitions (just one for now: Men's A 2026)
-      const { data: comps } = await supabase
-        .from('competition')
-        .select('id, name')
-        .order('name')
-        .limit(1);
-
-      if (cancelled) return;
-      const comp = comps?.[0];
+      const comp = comps.find((c) => c.id === compId);
       if (!comp) {
         setRows([]);
         setLoading(false);
@@ -51,7 +99,9 @@ export default function StandingsPage() {
       // Build a lookup of team -> club name
       const teamMap = new Map<string, { name: string; club_id: string }>();
       for (const e of entriesRes.data ?? []) {
-        const t = (e as { team?: { id: string; name: string; club_id: string } }).team;
+        type TeamRef = { id: string; name: string; club_id: string };
+        const raw = (e as unknown as { team?: TeamRef | TeamRef[] | null }).team;
+        const t = Array.isArray(raw) ? raw[0] : raw;
         if (t) teamMap.set(t.id, { name: t.name, club_id: t.club_id });
       }
 
@@ -118,7 +168,7 @@ export default function StandingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [compsLoaded, compId, comps]);
 
   return (
     <div className="space-y-4">
@@ -133,6 +183,22 @@ export default function StandingsPage() {
         <Trophy className="w-6 h-6 text-gold-500" aria-hidden />
         <h1 className="font-display font-bold text-2xl">Standings</h1>
       </div>
+      {comps.length > 1 && (
+        <label className="block max-w-sm">
+          <span className="text-sm font-medium text-pitch-800">Competition</span>
+          <select
+            className="input mt-1"
+            value={compId ?? ''}
+            onChange={(e) => setCompId(e.target.value)}
+          >
+            {comps.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {compName && (
         <p className="text-pitch-700">
           {compName} — league table updated from completed matches.

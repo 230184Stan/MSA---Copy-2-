@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
 import type { Division, Season, Role } from '@/lib/types';
+import { checkEligibility } from '@/lib/eligibility';
 import {
   ArrowLeft,
   Users,
@@ -94,7 +95,7 @@ export default function PlayersPage() {
   const [regError, setRegError] = useState<string | null>(null);
   const [regSubmitting, setRegSubmitting] = useState(false);
 
-  async function loadData() {
+  async function load() {
     setLoading(true);
     setError(null);
 
@@ -215,6 +216,21 @@ export default function PlayersPage() {
       return;
     }
 
+    const division = divisions.find((d) => d.id === divisionId);
+    if (!division) {
+      setFormError('Could not find that division. Please pick one.');
+      return;
+    }
+    const eligibilityError = checkEligibility(
+      { dob: form.dob, gender: form.gender },
+      division,
+      season
+    );
+    if (eligibilityError) {
+      setFormError(eligibilityError);
+      return;
+    }
+
     setSubmitting(true);
     // Insert player + registration in sequence
     const { data: newPlayer, error: playerErr } = await supabase
@@ -268,6 +284,27 @@ export default function PlayersPage() {
       return;
     }
 
+    if ((registrations[regPlayer.id] ?? []).length > 0) {
+      setRegError(
+        'This player already has an active registration. End it first, or use a division move.'
+      );
+      return;
+    }
+    const regDivision = divisions.find((d) => d.id === divisionId);
+    if (!regDivision) {
+      setRegError('Could not find that division. Please pick one.');
+      return;
+    }
+    const regEligibilityError = checkEligibility(
+      { dob: regPlayer.dob, gender: regPlayer.gender },
+      regDivision,
+      season
+    );
+    if (regEligibilityError) {
+      setRegError(regEligibilityError);
+      return;
+    }
+
     setRegSubmitting(true);
     const { error } = await supabase.from('registration').insert({
       player_id: regPlayer.id,
@@ -278,7 +315,11 @@ export default function PlayersPage() {
     });
 
     if (error) {
-      setRegError(error.message || 'Could not register the player.');
+      setRegError(
+        error.code === '23505'
+          ? 'This player already has an active registration.'
+          : error.message || 'Could not register the player.'
+      );
     } else {
       setRegPlayer(null);
       setRegForm({ team_id: '', division_id: '' });

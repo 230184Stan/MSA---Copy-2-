@@ -1,6 +1,16 @@
 import { useAuth } from '@/lib/auth';
 import { Link } from 'react-router-dom';
-import { Shield, Users, Flag, ChevronRight, Info, UserPlus } from 'lucide-react';
+import {
+  Shield,
+  Users,
+  Flag,
+  ChevronRight,
+  Info,
+  UserPlus,
+  Trophy,
+  UserCog,
+  ArrowUpRight,
+} from 'lucide-react';
 
 const roleLabels: Record<string, string> = {
   admin: 'Administrator',
@@ -14,29 +24,71 @@ export default function DashboardPage() {
   const role = profile?.role ?? 'public';
   const canManagePlayers = role === 'admin' || role === 'club_manager';
 
-  const tools: { label: string; desc: string; icon: typeof Shield; to?: string }[] = [
+  const isAdmin = role === 'admin';
+  const isManager = role === 'club_manager';
+  const isReferee = role === 'referee';
+
+  // Each tool lists who may use it. Tools without a route show as "Soon".
+  const allTools: {
+    label: string;
+    desc: string;
+    icon: typeof Shield;
+    to?: string;
+    allowed: boolean;
+  }[] = [
     {
       label: 'Players',
       desc: 'Register players and assign them to your teams.',
       icon: UserPlus,
-      to: canManagePlayers ? '/players' : undefined,
+      to: '/players',
+      allowed: canManagePlayers,
+    },
+    {
+      label: 'Clubs & teams',
+      desc: isAdmin ? 'Add clubs and the teams they field.' : 'Add teams for your club.',
+      icon: Users,
+      to: '/admin/clubs',
+      allowed: isAdmin || isManager,
     },
     {
       label: 'Seasons & windows',
       desc: 'Create seasons and set transfer windows.',
       icon: Shield,
+      to: '/admin/seasons',
+      allowed: isAdmin,
     },
     {
-      label: 'Clubs & teams',
-      desc: 'Manage clubs, teams, and competition entries.',
-      icon: Users,
+      label: 'Competitions & fixtures',
+      desc: 'Enter teams into competitions and schedule matches.',
+      icon: Trophy,
+      to: '/admin/competitions',
+      allowed: isAdmin,
     },
     {
       label: 'Match results',
-      desc: 'Enter scores and events for your assigned matches.',
+      desc: isAdmin
+        ? 'Enter scores, assign referees, publish matches.'
+        : 'Enter scores for your assigned matches.',
       icon: Flag,
+      to: '/matches/manage',
+      allowed: isAdmin || isReferee,
+    },
+    {
+      label: 'Users & roles',
+      desc: 'Promote people to club manager, referee or admin.',
+      icon: UserCog,
+      to: '/admin/users',
+      allowed: isAdmin,
+    },
+    {
+      label: 'Division moves',
+      desc: 'Move players between divisions and clubs, with approvals.',
+      icon: ArrowUpRight,
+      to: '/moves',
+      allowed: isAdmin || isManager,
     },
   ];
+  const tools = allTools.filter((t) => t.allowed);
 
   return (
     <div className="space-y-6">
@@ -66,6 +118,7 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {tools.length > 0 && (
       <section>
         <h2 className="font-display font-bold text-lg mb-3">Your tools</h2>
         <ul className="space-y-2">
@@ -105,6 +158,7 @@ export default function DashboardPage() {
           })}
         </ul>
       </section>
+      )}
 
       <section>
         <Link
