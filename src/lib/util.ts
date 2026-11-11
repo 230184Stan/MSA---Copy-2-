@@ -38,3 +38,14 @@ export function formatDay(iso: string): string {
     year: 'numeric',
   });
 }
+
+export function calcAge(dobIso: string): number {
+  const dob = new Date(dobIso + 'T00:00:00');
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < dob.getMonth() ||
+    (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate());
+  if (beforeBirthday) age--;
+  return age;
+}

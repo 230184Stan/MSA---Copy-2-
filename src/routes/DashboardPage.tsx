@@ -10,6 +10,8 @@ import {
   Trophy,
   UserCog,
   ArrowUpRight,
+  ShieldAlert,
+  RefreshCw,
 } from 'lucide-react';
 
 const roleLabels: Record<string, string> = {
@@ -67,8 +69,8 @@ export default function DashboardPage() {
     {
       label: 'Match results',
       desc: isAdmin
-        ? 'Enter scores, assign referees, publish matches.'
-        : 'Enter scores for your assigned matches.',
+        ? 'Enter scores, record goals and cards, assign referees, publish matches.'
+        : 'Enter scores and record goals and cards for your assigned matches.',
       icon: Flag,
       to: '/matches/manage',
       allowed: isAdmin || isReferee,
@@ -85,6 +87,24 @@ export default function DashboardPage() {
       desc: 'Move players between divisions and clubs, with approvals.',
       icon: ArrowUpRight,
       to: '/moves',
+      allowed: isAdmin || isManager,
+    },
+    {
+      label: 'Season rollover',
+      desc: isAdmin
+        ? 'Carry players into the new season and place those who have aged out of Under 18.'
+        : 'See which of your players are ageing out of Under 18 before the new season.',
+      icon: RefreshCw,
+      to: '/rollover',
+      allowed: isAdmin || isManager,
+    },
+    {
+      label: 'Discipline',
+      desc: isAdmin
+        ? 'See suspensions, add or cancel them, and set the card rules.'
+        : 'See which of your players are suspended.',
+      icon: ShieldAlert,
+      to: '/discipline',
       allowed: isAdmin || isManager,
     },
   ];

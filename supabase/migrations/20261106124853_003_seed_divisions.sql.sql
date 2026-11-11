@@ -55,14 +55,14 @@ on conflict (name) do update set
   is_current   = excluded.is_current;
 
 -- DEMO CLUBS
+-- Safe to re-run: migration 006 renames these clubs, so a second run must NOT try to
+-- re-create them under their old names. Any unique clash (id or name) just skips the row.
 insert into club (id, name, founded, contact) values
   ('33333333-0000-0000-0000-000000000001', 'Port Moresby Rangers', 1998, 'rangers@example.org'),
   ('33333333-0000-0000-0000-000000000002', 'Lae United',           2001, 'united@example.org')
-on conflict (name) do update set
-  founded = excluded.founded,
-  contact = excluded.contact;
+on conflict do nothing;
 
--- DEMO TEAMS (one per club in Men's A)
+-- DEMO TEAMS (one per club in Men's A). Same re-run rule as the clubs above.
 insert into team (id, club_id, name, division_id) values
   ('44444444-0000-0000-0000-000000000001',
    '33333333-0000-0000-0000-000000000001',
@@ -72,8 +72,7 @@ insert into team (id, club_id, name, division_id) values
    '33333333-0000-0000-0000-000000000002',
    'Lae United FC',
    '11111111-0000-0000-0000-000000000001')
-on conflict (club_id, name) do update set
-  division_id = excluded.division_id;
+on conflict do nothing;
 
 -- COMPETITION: Men's A 2026
 insert into competition (id, season_id, division_id, name) values

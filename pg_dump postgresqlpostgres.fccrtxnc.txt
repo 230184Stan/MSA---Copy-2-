@@ -1,0 +1,8 @@
+pg_dump "postgresql://postgres.fccrtxncesburvizvlpc:lDYDF8SbKlixOmhG@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres" \
+  --clean \
+  --if-exists \
+  --no-owner \
+  --no-privileges \
+  -f supabase-backup.sql
+
+pg_dump "postgresql://postgres.fccrtxncesburvizvlpc:lDYDF8SbKlixOmhG@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres" --clean --if-exists --no-owner --no-privileges -f supabase-backup.sql

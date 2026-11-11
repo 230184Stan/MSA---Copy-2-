@@ -1,7 +1,6 @@
--- MSA: complete database setup (migrations 001-009 in order).
--- Paste into Supabase > SQL Editor > New query > Run.
+-- MSA: complete database setup (migrations 001-012). Safe to run more than once.
 
--- ================= 20261106100000_001_schema.sql =================
+-- ===== 20261106100000_001_schema.sql =====
 /*
 # 001 — Core schema (rebuilt; replaces the original Bolt migration that was never exported)
 
@@ -174,12 +173,16 @@ with results as (
   select competition_id, home_team_id as team_id,
          home_score as gf, away_score as ga
     from public.match
-   where status in ('completed','forfeit') and home_score is not null and away_score is not null
+   where status in ('completed','forfeit')
+     and published = true
+     and home_score is not null and away_score is not null
   union all
   select competition_id, away_team_id,
          away_score, home_score
     from public.match
-   where status in ('completed','forfeit') and home_score is not null and away_score is not null
+   where status in ('completed','forfeit')
+     and published = true
+     and home_score is not null and away_score is not null
 )
 select competition_id,
        team_id,
@@ -195,7 +198,7 @@ select competition_id,
   from results
  group by competition_id, team_id;
 
--- ================= 20261106100100_002_rls.sql =================
+-- ===== 20261106100100_002_rls.sql =====
 /*
 # 002 — Role helpers and Row Level Security
 
@@ -414,7 +417,7 @@ grant select, insert, update, delete on public.profiles, public.player, public.r
                 public.competition, public.competition_entry, public.match, public.match_event,
                 public.transfer_window to authenticated;
 
--- ================= 20261106124853_003_seed_divisions.sql.sql =================
+-- ===== 20261106124853_003_seed_divisions.sql.sql =====
 /*
 # Seed data: five divisions, current season, demo clubs/teams/competitions
 
@@ -472,14 +475,14 @@ on conflict (name) do update set
   is_current   = excluded.is_current;
 
 -- DEMO CLUBS
+-- Safe to re-run: migration 006 renames these clubs, so a second run must NOT try to
+-- re-create them under their old names. Any unique clash (id or name) just skips the row.
 insert into club (id, name, founded, contact) values
   ('33333333-0000-0000-0000-000000000001', 'Port Moresby Rangers', 1998, 'rangers@example.org'),
   ('33333333-0000-0000-0000-000000000002', 'Lae United',           2001, 'united@example.org')
-on conflict (name) do update set
-  founded = excluded.founded,
-  contact = excluded.contact;
+on conflict do nothing;
 
--- DEMO TEAMS (one per club in Men's A)
+-- DEMO TEAMS (one per club in Men's A). Same re-run rule as the clubs above.
 insert into team (id, club_id, name, division_id) values
   ('44444444-0000-0000-0000-000000000001',
    '33333333-0000-0000-0000-000000000001',
@@ -489,8 +492,7 @@ insert into team (id, club_id, name, division_id) values
    '33333333-0000-0000-0000-000000000002',
    'Lae United FC',
    '11111111-0000-0000-0000-000000000001')
-on conflict (club_id, name) do update set
-  division_id = excluded.division_id;
+on conflict do nothing;
 
 -- COMPETITION: Men's A 2026
 insert into competition (id, season_id, division_id, name) values
@@ -506,7 +508,7 @@ insert into competition_entry (competition_id, team_id) values
   ('55555555-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000002')
 on conflict (competition_id, team_id) do nothing;
 
--- ================= 20261106125009_004_fix_team_insert_policy.sql.sql =================
+-- ===== 20261106125009_004_fix_team_insert_policy.sql.sql =====
 /*
 # Fix team INSERT policy
 
@@ -524,7 +526,7 @@ create policy "team_insert_own_club_or_admin" on team
   for insert to authenticated
   with check (public.is_admin() or club_id = public.my_club_id());
 
--- ================= 20261106125733_005_auto_profile.sql.sql =================
+-- ===== 20261106125733_005_auto_profile.sql.sql =====
 /*
 # Auto-create profile on signup
 
@@ -571,7 +573,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- ================= 20261107004740_006_phase3_madang_clubs_and_sample_matches.sql.sql =================
+-- ===== 20261107004740_006_phase3_madang_clubs_and_sample_matches.sql.sql =====
 /*
 # Phase 3 — Madang club rebrand + sample matches
 
@@ -644,7 +646,7 @@ WHERE NOT EXISTS (
     AND m.kickoff_at     = '2026-10-17 14:00:00+10'::timestamptz
 );
 
--- ================= 20261107120000_007_registration_rules.sql =================
+-- ===== 20261107120000_007_registration_rules.sql =====
 /*
 # Registration rules enforced in the database
 
@@ -743,7 +745,7 @@ create trigger registration_eligibility
   on public.registration
   for each row execute function public.check_registration_eligibility();
 
--- ================= 20261107130000_008_season_switch_and_match_guards.sql =================
+-- ===== 20261107130000_008_season_switch_and_match_guards.sql =====
 /*
 # 008 — Safe season switch, referee guard, completed-match rule
 
@@ -823,7 +825,7 @@ begin
   end if;
 end $$;
 
--- ================= 20261107140000_009_division_moves.sql =================
+-- ===== 20261107140000_009_division_moves.sql =====
 /*
 # 009 — Division moves (Phase 6)
 
@@ -1272,3 +1274,846 @@ grant  execute on function public.request_division_move(uuid, uuid, text) to aut
 grant  execute on function public.approve_division_move(uuid)             to authenticated;
 grant  execute on function public.reject_division_move(uuid, text)        to authenticated;
 grant  execute on function public.my_division_moves()                     to authenticated;
+
+-- ===== 20261108100000_010_player_photos.sql =====
+/*
+# 010 — Player photos
+
+## What
+- player.photo_path: where the player's photo lives in storage (null = no photo).
+- A PRIVATE storage bucket "player-photos". Nothing is reachable by a public link; the app
+  shows photos through short-lived signed links.
+
+## Who can see / change a photo
+Same people who can already see the PLAYER: the storage rules look the player up through the
+normal player row-level security, so "can see the player" = "can see the photo".
+  - read:    admin, or the manager of a club the player is registered with (or who created them)
+  - upload / replace / delete: admin or club manager, for players they can see
+Photos can be of children, so there is no public access and no listing for anyone else.
+
+## File rules (enforced by storage, not just the app)
+- Path must be  <player id>/<number>.jpg  (a new number each upload, so a replaced photo is
+  never served from a stale cache; the app deletes the old file).
+- JPEG only, max 500 KB. The app shrinks photos to ~640px before upload (about 50-150 KB),
+  which also suits slow mobile data.
+*/
+
+alter table public.player add column if not exists photo_path text;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('player-photos', 'player-photos', false, 512000, array['image/jpeg'])
+on conflict (id) do update
+  set public = false,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists player_photos_read   on storage.objects;
+drop policy if exists player_photos_insert on storage.objects;
+drop policy if exists player_photos_update on storage.objects;
+drop policy if exists player_photos_delete on storage.objects;
+
+create policy player_photos_read on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'player-photos'
+    and exists (select 1 from public.player p
+                 where p.id::text = (storage.foldername(objects.name))[1])
+  );
+
+create policy player_photos_insert on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'player-photos'
+    and public.my_role() in ('admin', 'club_manager')
+    and exists (select 1 from public.player p
+                 where objects.name ~ ('^' || p.id::text || '/[0-9]+\.jpg$'))
+  );
+
+create policy player_photos_update on storage.objects
+  for update to authenticated
+  using (
+    bucket_id = 'player-photos'
+    and public.my_role() in ('admin', 'club_manager')
+    and exists (select 1 from public.player p
+                 where p.id::text = (storage.foldername(objects.name))[1])
+  )
+  with check (
+    bucket_id = 'player-photos'
+    and exists (select 1 from public.player p
+                 where objects.name ~ ('^' || p.id::text || '/[0-9]+\.jpg$'))
+  );
+
+create policy player_photos_delete on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'player-photos'
+    and public.my_role() in ('admin', 'club_manager')
+    and exists (select 1 from public.player p
+                 where p.id::text = (storage.foldername(objects.name))[1])
+  );
+
+-- ===== 20261108110000_011_discipline.sql =====
+/*
+# 011 — Cards and suspensions (Phase 8)
+
+## How it works
+1. A referee (or admin) records match events: goal, yellow_card, red_card, substitution.
+   Each event must name a player registered to one of the two teams in that match.
+2. Cards create suspensions AUTOMATICALLY (rules are in discipline_settings, admin-editable):
+     - red card                        -> ban of `red_card_matches` matches        (default 1)
+     - every `yellow_card_limit`-th yellow in the same competition -> ban of `yellow_ban_matches` (default 3 -> 1)
+   Deleting the card event (a recording mistake) cancels a ban that has not been served yet.
+   A second yellow in one match should be recorded as a red card.
+3. A ban is SERVED by the player's team playing its next matches in that competition:
+   when a match becomes completed/forfeit it counts once for each applicable ban.
+     - the match where the card was shown never counts
+     - only matches kicking off AFTER the card's match count
+     - matches in other competitions never count (unless an admin ban is "any competition")
+   If a result is corrected (match moved back out of completed) the count is undone, and it
+   cannot be double-counted (one row per ban per match).
+   A card entered LATE (after the team's next match was already completed) still counts the
+   matches already played after it.
+4. A suspended player cannot start or complete a division move.
+5. Admins can add a manual ban (reason required) or cancel one.
+
+## Access
+- suspension tables are not directly readable: the app uses my_suspensions() (admin = all,
+  club manager = their club's players) and match_roster() (admin or the ASSIGNED referee).
+- Referees get to see player photos only for players on a match they are assigned to,
+  within 7 days either side of kick-off.
+
+Known gap: there is no match-day squad table yet, so a suspended player is FLAGGED on the
+roster but nothing stops a name being entered. That comes with squad selection.
+*/
+
+-- ---------- settings (exactly one row) ----------
+create table if not exists public.discipline_settings (
+  id                 boolean primary key default true check (id),
+  red_card_matches   integer not null default 1 check (red_card_matches between 1 and 50),
+  yellow_card_limit  integer not null default 3 check (yellow_card_limit between 1 and 20),
+  yellow_ban_matches integer not null default 1 check (yellow_ban_matches between 1 and 50),
+  updated_at         timestamptz not null default now()
+);
+insert into public.discipline_settings (id) values (true) on conflict do nothing;
+
+-- ---------- suspensions ----------
+create table if not exists public.suspension (
+  id               uuid primary key default gen_random_uuid(),
+  player_id        uuid not null references public.player(id) on delete cascade,
+  competition_id   uuid references public.competition(id) on delete set null,
+  source_match_id  uuid references public.match(id) on delete set null,
+  source_event_id  uuid references public.match_event(id) on delete set null,
+  reason           text not null check (reason in ('red_card','yellow_accumulation','admin')),
+  matches_banned   integer not null check (matches_banned between 1 and 50),
+  status           text not null default 'active' check (status in ('active','served','cancelled')),
+  notes            text,
+  created_by       uuid references auth.users(id) default auth.uid(),
+  created_at       timestamptz not null default now()
+);
+create index if not exists suspension_player_idx on public.suspension (player_id) where status = 'active';
+create index if not exists suspension_event_idx  on public.suspension (source_event_id);
+
+-- one row per (ban, match): makes serving idempotent
+create table if not exists public.suspension_match (
+  suspension_id uuid not null references public.suspension(id) on delete cascade,
+  match_id      uuid not null references public.match(id) on delete cascade,
+  primary key (suspension_id, match_id)
+);
+
+alter table public.discipline_settings enable row level security;
+alter table public.suspension          enable row level security;
+alter table public.suspension_match    enable row level security;
+
+drop policy if exists discipline_settings_read  on public.discipline_settings;
+drop policy if exists discipline_settings_admin on public.discipline_settings;
+create policy discipline_settings_read  on public.discipline_settings for select to authenticated using (true);
+create policy discipline_settings_admin on public.discipline_settings for update to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
+-- suspension / suspension_match: no direct access at all (functions only)
+revoke all on public.suspension, public.suspension_match from anon, authenticated;
+revoke all on public.discipline_settings from anon;
+grant select, update on public.discipline_settings to authenticated;
+
+-- ---------- helper ----------
+create or replace function public.is_player_suspended(p_player uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$ select exists (select 1 from public.suspension where player_id = p_player and status = 'active') $$;
+revoke execute on function public.is_player_suspended(uuid) from public, anon, authenticated;
+
+-- ---------- a card/goal must belong to a player on one of the two teams ----------
+create or replace function public.match_event_check()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  m public.match%rowtype;
+  r public.registration%rowtype;
+begin
+  if new.registration_id is null then
+    if new.event_type in ('yellow_card','red_card') then
+      raise exception 'Choose the player who received the card.';
+    end if;
+    return new;
+  end if;
+  select * into m from public.match where id = new.match_id;
+  select * into r from public.registration where id = new.registration_id;
+  if r.id is null or r.team_id not in (m.home_team_id, m.away_team_id) then
+    raise exception 'That player is not on either team in this match.';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.match_event_check() from public, anon, authenticated;
+drop trigger if exists match_event_check_trg on public.match_event;
+create trigger match_event_check_trg
+  before insert or update of match_id, registration_id on public.match_event
+  for each row execute function public.match_event_check();
+
+-- ---------- counts matches that were already played when a card is entered late ----------
+create or replace function public.serve_suspension_from_past_matches(p_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  insert into public.suspension_match (suspension_id, match_id)
+  select s.id, m.id
+    from public.suspension s
+    join public.match src on src.id = s.source_match_id
+    join public.registration r on r.player_id = s.player_id and r.status = 'active'
+    join public.match m
+      on m.status in ('completed','forfeit')
+     and r.team_id in (m.home_team_id, m.away_team_id)
+   where s.id = p_id and s.status = 'active'
+     and (s.competition_id is null or s.competition_id = m.competition_id)
+     and m.id <> s.source_match_id
+     and m.kickoff_at > src.kickoff_at
+   order by m.kickoff_at
+   limit (select matches_banned from public.suspension where id = p_id)
+  on conflict do nothing;
+
+  update public.suspension s set status = 'served'
+   where s.id = p_id and s.status = 'active'
+     and (select count(*) from public.suspension_match sm where sm.suspension_id = s.id) >= s.matches_banned;
+end;
+$$;
+revoke execute on function public.serve_suspension_from_past_matches(uuid) from public, anon, authenticated;
+
+-- ---------- cards create suspensions ----------
+create or replace function public.match_event_after_insert()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  st        public.discipline_settings%rowtype;
+  v_player  uuid;
+  v_comp    uuid;
+  v_yellows integer;
+  v_susp    uuid;
+begin
+  if new.event_type not in ('red_card','yellow_card') or new.registration_id is null then
+    return new;
+  end if;
+  select * into st from public.discipline_settings limit 1;
+  select player_id into v_player from public.registration where id = new.registration_id;
+  select competition_id into v_comp from public.match where id = new.match_id;
+
+  if new.event_type = 'red_card' then
+    insert into public.suspension (player_id, competition_id, source_match_id, source_event_id, reason, matches_banned)
+    values (v_player, v_comp, new.match_id, new.id, 'red_card', st.red_card_matches)
+    returning id into v_susp;
+  else
+    select count(*) into v_yellows
+      from public.match_event e
+      join public.registration r on r.id = e.registration_id
+      join public.match m on m.id = e.match_id
+     where r.player_id = v_player and m.competition_id = v_comp and e.event_type = 'yellow_card';
+    if v_yellows % st.yellow_card_limit = 0 then
+      insert into public.suspension (player_id, competition_id, source_match_id, source_event_id, reason, matches_banned)
+      values (v_player, v_comp, new.match_id, new.id, 'yellow_accumulation', st.yellow_ban_matches)
+      returning id into v_susp;
+    end if;
+  end if;
+  if v_susp is not null then
+    perform public.serve_suspension_from_past_matches(v_susp);
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.match_event_after_insert() from public, anon, authenticated;
+drop trigger if exists match_event_after_insert_trg on public.match_event;
+create trigger match_event_after_insert_trg
+  after insert on public.match_event
+  for each row execute function public.match_event_after_insert();
+
+-- deleting a mistaken card cancels a ban that has not been served
+create or replace function public.match_event_before_delete()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  update public.suspension
+     set status = 'cancelled',
+         notes = coalesce(notes || ' ', '') || '(Cancelled: the card was removed from the match record.)'
+   where source_event_id = old.id and status = 'active';
+  return old;
+end;
+$$;
+revoke execute on function public.match_event_before_delete() from public, anon, authenticated;
+drop trigger if exists match_event_before_delete_trg on public.match_event;
+create trigger match_event_before_delete_trg
+  before delete on public.match_event
+  for each row execute function public.match_event_before_delete();
+
+-- ---------- serving bans when a match is completed (and undoing it) ----------
+create or replace function public.match_status_serves_bans()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  was_done boolean := old.status in ('completed','forfeit');
+  is_done  boolean := new.status in ('completed','forfeit');
+begin
+  if is_done and not was_done then
+    insert into public.suspension_match (suspension_id, match_id)
+    select s.id, new.id
+      from public.suspension s
+      join public.registration r
+        on r.player_id = s.player_id and r.status = 'active'
+       and r.team_id in (new.home_team_id, new.away_team_id)
+      left join public.match src on src.id = s.source_match_id
+     where s.status = 'active'
+       and (s.competition_id is null or s.competition_id = new.competition_id)
+       and s.source_match_id is distinct from new.id
+       and new.kickoff_at > coalesce(src.kickoff_at, s.created_at)
+    on conflict do nothing;
+  elsif was_done and not is_done then
+    delete from public.suspension_match where match_id = new.id;
+  else
+    return new;
+  end if;
+
+  update public.suspension s set status = 'served'
+   where s.status = 'active'
+     and (select count(*) from public.suspension_match sm where sm.suspension_id = s.id) >= s.matches_banned;
+  update public.suspension s set status = 'active'
+   where s.status = 'served'
+     and (select count(*) from public.suspension_match sm where sm.suspension_id = s.id) < s.matches_banned;
+  return new;
+end;
+$$;
+revoke execute on function public.match_status_serves_bans() from public, anon, authenticated;
+drop trigger if exists match_status_serves_bans_trg on public.match;
+create trigger match_status_serves_bans_trg
+  after update of status on public.match
+  for each row when (old.status is distinct from new.status)
+  execute function public.match_status_serves_bans();
+
+-- ---------- suspended players cannot move divisions ----------
+create or replace function public.division_move_suspension_guard()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if new.status in ('requested','club_approved','completed') and public.is_player_suspended(new.player_id) then
+    raise exception 'This player is suspended and cannot move divisions until the suspension has been served.';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.division_move_suspension_guard() from public, anon, authenticated;
+drop trigger if exists division_move_suspension_guard_trg on public.division_move;
+create trigger division_move_suspension_guard_trg
+  before insert or update of status on public.division_move
+  for each row execute function public.division_move_suspension_guard();
+
+-- ---------- admin actions ----------
+create or replace function public.add_suspension(p_player_id uuid, p_matches integer, p_notes text)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id    uuid;
+  v_notes text := nullif(btrim(coalesce(p_notes, '')), '');
+begin
+  if auth.uid() is null or not public.is_admin() then
+    raise exception 'Only administrators can add a suspension.';
+  end if;
+  if p_matches is null or p_matches < 1 or p_matches > 50 then
+    raise exception 'Enter a number of matches between 1 and 50.';
+  end if;
+  if v_notes is null then
+    raise exception 'Please give a reason for the suspension.';
+  end if;
+  if not exists (select 1 from public.player where id = p_player_id) then
+    raise exception 'Player not found.';
+  end if;
+  insert into public.suspension (player_id, competition_id, reason, matches_banned, notes)
+  values (p_player_id, null, 'admin', p_matches, v_notes)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.cancel_suspension(p_id uuid, p_reason text default null)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_status text;
+  v_reason text := nullif(btrim(coalesce(p_reason, '')), '');
+begin
+  if auth.uid() is null or not public.is_admin() then
+    raise exception 'Only administrators can cancel a suspension.';
+  end if;
+  select status into v_status from public.suspension where id = p_id for update;
+  if v_status is null then
+    raise exception 'Suspension not found.';
+  end if;
+  if v_status <> 'active' then
+    raise exception 'This suspension is already %.', v_status;
+  end if;
+  update public.suspension
+     set status = 'cancelled',
+         notes = coalesce(notes || ' ', '') || '(Cancelled by an administrator' || coalesce(': ' || v_reason, '') || '.)'
+   where id = p_id;
+end;
+$$;
+
+-- ---------- reading (scoped to the caller) ----------
+create or replace function public.my_suspensions()
+returns table (
+  id uuid, player_id uuid, player_name text, photo_path text,
+  team_name text, club_name text, competition_name text,
+  reason text, matches_banned integer, matches_served integer, matches_remaining integer,
+  status text, notes text, source_label text, created_at timestamptz
+)
+language sql stable security definer set search_path = public
+as $$
+  with me as (select public.my_role() as role, public.my_club_id() as club)
+  select s.id, s.player_id, p.full_name, p.photo_path,
+         ar.team_name, ar.club_name, c.name,
+         s.reason, s.matches_banned,
+         coalesce(sm.n, 0)::int,
+         greatest(s.matches_banned - coalesce(sm.n, 0), 0)::int,
+         s.status, s.notes,
+         case when src.id is not null then
+           th.name || ' v ' || ta.name || ', ' ||
+           to_char(src.kickoff_at at time zone 'Pacific/Port_Moresby', 'DD Mon YYYY')
+         end,
+         s.created_at
+    from public.suspension s
+    join public.player p on p.id = s.player_id
+    left join public.competition c on c.id = s.competition_id
+    left join public.match src on src.id = s.source_match_id
+    left join public.team th on th.id = src.home_team_id
+    left join public.team ta on ta.id = src.away_team_id
+    left join lateral (
+      select t.name as team_name, cl.name as club_name, t.club_id
+        from public.registration r
+        join public.team t on t.id = r.team_id
+        join public.club cl on cl.id = t.club_id
+       where r.player_id = s.player_id and r.status = 'active'
+       limit 1
+    ) ar on true
+    left join lateral (
+      select count(*) as n from public.suspension_match m where m.suspension_id = s.id
+    ) sm on true
+   where (select role from me) = 'admin'
+      or ((select role from me) = 'club_manager' and ar.club_id = (select club from me))
+   order by (s.status = 'active') desc, s.created_at desc
+$$;
+
+create or replace function public.match_roster(p_match_id uuid)
+returns table (
+  registration_id uuid, player_id uuid, player_name text, photo_path text,
+  team_id uuid, team_name text, side text, suspended boolean, matches_remaining integer
+)
+language sql stable security definer set search_path = public
+as $$
+  select r.id, p.id, p.full_name, p.photo_path, t.id, t.name,
+         case when t.id = m.home_team_id then 'home' else 'away' end,
+         coalesce(sr.remaining, 0) > 0,
+         coalesce(sr.remaining, 0)::int
+    from public.match m
+    join public.registration r
+      on r.team_id in (m.home_team_id, m.away_team_id) and r.status in ('active','suspended')
+    join public.player p on p.id = r.player_id
+    join public.team t on t.id = r.team_id
+    left join lateral (
+      select max(s.matches_banned - (select count(*) from public.suspension_match sm where sm.suspension_id = s.id)) as remaining
+        from public.suspension s
+       where s.player_id = p.id and s.status = 'active'
+    ) sr on true
+   where m.id = p_match_id
+     and (public.is_admin() or m.referee_id = auth.uid())
+   order by (t.id = m.home_team_id) desc, p.full_name
+$$;
+
+-- ---------- referees may see photos of players on THEIR match (7 days either side) ----------
+create or replace function public.referee_can_see_player(p_player_folder text)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select public.my_role() = 'referee' and exists (
+    select 1
+      from public.match m
+      join public.registration r
+        on r.team_id in (m.home_team_id, m.away_team_id) and r.status in ('active','suspended')
+     where m.referee_id = auth.uid()
+       and r.player_id::text = p_player_folder
+       and m.kickoff_at between now() - interval '7 days' and now() + interval '7 days'
+  )
+$$;
+grant execute on function public.referee_can_see_player(text) to authenticated;
+revoke execute on function public.referee_can_see_player(text) from public, anon;
+
+drop policy if exists player_photos_read_referee on storage.objects;
+create policy player_photos_read_referee on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'player-photos'
+    and public.referee_can_see_player((storage.foldername(objects.name))[1])
+  );
+
+-- ---------- who may call what ----------
+revoke execute on function public.add_suspension(uuid, integer, text)  from public, anon;
+revoke execute on function public.cancel_suspension(uuid, text)        from public, anon;
+revoke execute on function public.my_suspensions()                     from public, anon;
+revoke execute on function public.match_roster(uuid)                   from public, anon;
+grant  execute on function public.add_suspension(uuid, integer, text)  to authenticated;
+grant  execute on function public.cancel_suspension(uuid, text)        to authenticated;
+grant  execute on function public.my_suspensions()                     to authenticated;
+grant  execute on function public.match_roster(uuid)                   to authenticated;
+
+-- ===== 20261108120000_012_season_rollover.sql =====
+/*
+# 012 — Season rollover (Phase 9)
+
+## The problem
+Registrations belong to ONE season. When a new season starts, nobody is registered in it, and
+Under 18 players who have passed the new age cut-off are no longer eligible for their division.
+
+## Order of work (admin)
+  1. Seasons page: create the new season WITH its age cut-off date, and its transfer windows.
+  2. Season rollover page: PREVIEW. Club managers can already see their "ageing out" players here.
+  3. Run the rollover (one all-or-nothing step).
+  4. Make the new season current.
+  5. Club managers propose moves up for players who were placed in the entry-level division,
+     using the normal Division moves page (club + admin approval, inside the transfer window).
+
+## What run_season_rollover(from, to) does, in ONE transaction
+  - For every ACTIVE registration in the old season:
+      * still eligible          -> old one ended, same team/division registered in the new season
+      * no longer eligible      -> old one ended, player placed in the club's team in the default
+                                   division: men -> the entry-level men's division (highest level
+                                   number, i.e. Men's C); women -> the women's division.
+                                   If the club has no such team the player is left UNPLACED
+                                   (no active registration) and appears in the "needs a team" list.
+      * already registered in the new season (e.g. entered by hand) -> left alone
+  - Unserved suspensions are made "any competition" so they can still be served next season
+    (otherwise they would be tied to last season's competition forever).
+  - Division moves still in progress are rejected (their starting registration just ended);
+    the clubs are asked to request them again.
+  - A record of every player's outcome is kept (season_rollover_item).
+
+## Safety
+  - Admin only. Refuses if the new season does not start after the old one, if it has no age
+    cut-off date (when Under 18 players exist), or if the rollover was already done.
+  - Nothing is changed unless everything succeeds.
+  - Only status = 'active' registrations are carried over. (The old 'suspended' registration
+    status is unused: suspensions live in the suspension table since migration 011.)
+
+Known gaps: competition entries (which teams play in which competition) are NOT copied to the
+new season; they are set up on the Competitions page. Clubs are not notified automatically
+(announcements come in a later phase); the preview page is how managers see who is ageing out.
+*/
+
+create table if not exists public.season_rollover (
+  id                 uuid primary key default gen_random_uuid(),
+  from_season_id     uuid not null references public.season(id),
+  to_season_id       uuid not null unique references public.season(id),
+  done_by            uuid references auth.users(id) default auth.uid(),
+  done_at            timestamptz not null default now(),
+  carried            integer not null default 0,
+  aged_out_placed    integer not null default 0,
+  aged_out_unplaced  integer not null default 0,
+  skipped            integer not null default 0,
+  moves_rejected     integer not null default 0,
+  suspensions_updated integer not null default 0
+);
+
+create table if not exists public.season_rollover_item (
+  id                   uuid primary key default gen_random_uuid(),
+  rollover_id          uuid not null references public.season_rollover(id) on delete cascade,
+  player_id            uuid not null references public.player(id) on delete cascade,
+  from_registration_id uuid references public.registration(id),
+  to_registration_id   uuid references public.registration(id),
+  outcome              text not null check (outcome in ('carried','aged_out_placed','aged_out_unplaced','skipped'))
+);
+create index if not exists season_rollover_item_rollover_idx on public.season_rollover_item (rollover_id);
+
+alter table public.season_rollover      enable row level security;
+alter table public.season_rollover_item enable row level security;
+
+drop policy if exists season_rollover_read on public.season_rollover;
+create policy season_rollover_read on public.season_rollover for select to authenticated using (true);
+revoke all on public.season_rollover from anon;
+revoke all on public.season_rollover_item from anon, authenticated;
+grant select on public.season_rollover to authenticated;
+
+-- ---------- where an aged-out player goes by default (internal) ----------
+create or replace function public.rollover_default_placement(p_player uuid, p_club uuid)
+returns table (team_id uuid, division_id uuid)
+language sql stable security definer set search_path = public
+as $$
+  select t.id, t.division_id
+    from public.team t
+    join public.division d on d.id = t.division_id
+    join public.player pl on pl.id = p_player
+   where t.club_id = p_club
+     and d.max_age is null
+     and (
+       (pl.gender = 'male' and d.gender_rule = 'male'
+          and d.level = (select max(level) from public.division
+                          where gender_rule = 'male' and max_age is null and level is not null))
+       or (pl.gender = 'female' and d.gender_rule = 'female')
+     )
+   order by t.name
+   limit 1
+$$;
+revoke execute on function public.rollover_default_placement(uuid, uuid) from public, anon, authenticated;
+
+-- ---------- preview ----------
+create or replace function public.rollover_preview(p_from uuid, p_to uuid)
+returns table (
+  registration_id uuid, player_id uuid, player_name text, photo_path text, dob date, gender text,
+  club_id uuid, club_name text, team_name text, division_name text,
+  outcome text, reason text, default_team_name text, default_division_name text
+)
+language sql stable security definer set search_path = public
+as $$
+  with me as (select public.my_role() as role, public.my_club_id() as club)
+  select r.id, p.id, p.full_name, p.photo_path, p.dob, p.gender,
+         c.id, c.name, t.name, d.name,
+         case
+           when ex.already then 'already_registered'
+           when e.err is null then 'carry'
+           else 'ageing_out'
+         end,
+         case when ex.already then null else e.err end,
+         dt.name, dd.name
+    from public.registration r
+    join public.player   p on p.id = r.player_id
+    join public.team     t on t.id = r.team_id
+    join public.club     c on c.id = t.club_id
+    join public.division d on d.id = r.division_id
+    cross join lateral (select public.player_eligibility_error(r.player_id, r.division_id, p_to) as err) e
+    cross join lateral (
+      select exists (select 1 from public.registration x
+                      where x.player_id = r.player_id and x.season_id = p_to and x.status = 'active') as already
+    ) ex
+    left join lateral (select * from public.rollover_default_placement(p.id, c.id)) dp
+           on e.err is not null and not ex.already
+    left join public.team     dt on dt.id = dp.team_id
+    left join public.division dd on dd.id = dp.division_id
+   where r.season_id = p_from and r.status = 'active'
+     and ( (select role from me) = 'admin'
+           or ((select role from me) = 'club_manager' and c.id = (select club from me)) )
+   order by (e.err is null) , c.name, p.full_name
+$$;
+
+-- ---------- run ----------
+create or replace function public.run_season_rollover(p_from uuid, p_to uuid)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_from season%rowtype;
+  v_to   season%rowtype;
+  v_roll uuid;
+  v_end  date;
+  rec    record;
+  v_err  text;
+  v_new  uuid;
+  v_def_team uuid;
+  v_def_div  uuid;
+  n_carried integer := 0;
+  n_placed  integer := 0;
+  n_unplaced integer := 0;
+  n_skipped integer := 0;
+  n_moves   integer := 0;
+  n_susp    integer := 0;
+begin
+  if auth.uid() is null or not public.is_admin() then
+    raise exception 'Only administrators can run a season rollover.';
+  end if;
+
+  select * into v_from from public.season where id = p_from;
+  select * into v_to   from public.season where id = p_to;
+  if v_from.id is null or v_to.id is null then
+    raise exception 'Season not found.';
+  end if;
+  if p_from = p_to then
+    raise exception 'Choose two different seasons.';
+  end if;
+  if v_to.start_date <= v_from.start_date then
+    raise exception 'The new season (%) must start after the season you are rolling over from (%).', v_to.name, v_from.name;
+  end if;
+  if exists (select 1 from public.season_rollover where to_season_id = p_to) then
+    raise exception 'The rollover to season % has already been done.', v_to.name;
+  end if;
+  if v_to.cut_off_date is null and exists (
+       select 1 from public.registration r join public.division d on d.id = r.division_id
+        where r.season_id = p_from and r.status = 'active' and d.max_age is not null) then
+    raise exception 'Season % has no age cut-off date. Set it on the Seasons page first.', v_to.name;
+  end if;
+
+  insert into public.season_rollover (from_season_id, to_season_id) values (p_from, p_to)
+  returning id into v_roll;
+  v_end := least(current_date, v_from.end_date);
+
+  for rec in
+    select r.id as reg_id, r.player_id, r.team_id, r.division_id, t.club_id
+      from public.registration r
+      join public.team t on t.id = r.team_id
+     where r.season_id = p_from and r.status = 'active'
+     order by r.player_id
+  loop
+    if exists (select 1 from public.registration x
+                where x.player_id = rec.player_id and x.season_id = p_to and x.status = 'active') then
+      insert into public.season_rollover_item (rollover_id, player_id, from_registration_id, outcome)
+      values (v_roll, rec.player_id, rec.reg_id, 'skipped');
+      n_skipped := n_skipped + 1;
+      continue;
+    end if;
+
+    v_err := public.player_eligibility_error(rec.player_id, rec.division_id, p_to);
+    update public.registration set status = 'ended', end_date = v_end where id = rec.reg_id;
+
+    if v_err is null then
+      insert into public.registration (player_id, team_id, division_id, season_id, status, start_date)
+      values (rec.player_id, rec.team_id, rec.division_id, p_to, 'active', v_to.start_date)
+      returning id into v_new;
+      insert into public.season_rollover_item (rollover_id, player_id, from_registration_id, to_registration_id, outcome)
+      values (v_roll, rec.player_id, rec.reg_id, v_new, 'carried');
+      n_carried := n_carried + 1;
+    else
+      v_def_team := null; v_def_div := null;
+      select dp.team_id, dp.division_id into v_def_team, v_def_div
+        from public.rollover_default_placement(rec.player_id, rec.club_id) dp;
+      if v_def_team is not null
+         and public.player_eligibility_error(rec.player_id, v_def_div, p_to) is null then
+        insert into public.registration (player_id, team_id, division_id, season_id, status, start_date)
+        values (rec.player_id, v_def_team, v_def_div, p_to, 'active', v_to.start_date)
+        returning id into v_new;
+        insert into public.season_rollover_item (rollover_id, player_id, from_registration_id, to_registration_id, outcome)
+        values (v_roll, rec.player_id, rec.reg_id, v_new, 'aged_out_placed');
+        n_placed := n_placed + 1;
+      else
+        insert into public.season_rollover_item (rollover_id, player_id, from_registration_id, outcome)
+        values (v_roll, rec.player_id, rec.reg_id, 'aged_out_unplaced');
+        n_unplaced := n_unplaced + 1;
+      end if;
+    end if;
+  end loop;
+
+  -- unserved bans must not stay tied to last season's competition
+  update public.suspension set competition_id = null
+   where status = 'active' and competition_id is not null;
+  get diagnostics n_susp = row_count;
+
+  -- moves in progress started from registrations that have just ended
+  update public.division_move
+     set status = 'rejected',
+         rejected_reason = 'The season rolled over. Please request this move again.'
+   where status in ('requested','club_approved');
+  get diagnostics n_moves = row_count;
+
+  update public.season_rollover
+     set carried = n_carried, aged_out_placed = n_placed, aged_out_unplaced = n_unplaced,
+         skipped = n_skipped, moves_rejected = n_moves, suspensions_updated = n_susp
+   where id = v_roll;
+
+  return jsonb_build_object(
+    'carried', n_carried, 'aged_out_placed', n_placed, 'aged_out_unplaced', n_unplaced,
+    'skipped', n_skipped, 'moves_rejected', n_moves, 'suspensions_updated', n_susp);
+end;
+$$;
+
+-- ---------- results after the run (scoped to the caller) ----------
+create or replace function public.rollover_results(p_to uuid, p_only_changes boolean default true)
+returns table (
+  player_id uuid, player_name text, photo_path text, club_name text,
+  from_team text, from_division text, to_team text, to_division text, outcome text
+)
+language sql stable security definer set search_path = public
+as $$
+  with me as (select public.my_role() as role, public.my_club_id() as club)
+  select p.id, p.full_name, p.photo_path, c.name,
+         ft.name, fd.name, tt.name, td.name, i.outcome
+    from public.season_rollover ro
+    join public.season_rollover_item i on i.rollover_id = ro.id
+    join public.player p on p.id = i.player_id
+    join public.registration fr on fr.id = i.from_registration_id
+    join public.team ft on ft.id = fr.team_id
+    join public.club c on c.id = ft.club_id
+    join public.division fd on fd.id = fr.division_id
+    left join public.registration tr on tr.id = i.to_registration_id
+    left join public.team tt on tt.id = tr.team_id
+    left join public.division td on td.id = tr.division_id
+   where ro.to_season_id = p_to
+     and (not p_only_changes or i.outcome not in ('carried','skipped'))
+     and ( (select role from me) = 'admin'
+           or ((select role from me) = 'club_manager' and c.id = (select club from me)) )
+   order by (i.outcome = 'aged_out_unplaced') desc, c.name, p.full_name
+$$;
+
+revoke execute on function public.rollover_preview(uuid, uuid)        from public, anon;
+revoke execute on function public.run_season_rollover(uuid, uuid)     from public, anon;
+revoke execute on function public.rollover_results(uuid, boolean)     from public, anon;
+grant  execute on function public.rollover_preview(uuid, uuid)        to authenticated;
+grant  execute on function public.run_season_rollover(uuid, uuid)     to authenticated;
+grant  execute on function public.rollover_results(uuid, boolean)     to authenticated;
+
+-- ===== 20261110100000_013_fix_standings_published.sql =====
+/*
+# 013 — Standings only count published matches
+
+The standings view previously counted every completed/forfeit match.
+Public users must only see published results. This replaces the view
+so unpublished matches no longer affect the table.
+*/
+
+create or replace view public.standings
+with (security_invoker = true) as
+with results as (
+  select competition_id, home_team_id as team_id,
+         home_score as gf, away_score as ga
+    from public.match
+   where status in ('completed','forfeit')
+     and published = true
+     and home_score is not null and away_score is not null
+  union all
+  select competition_id, away_team_id,
+         away_score, home_score
+    from public.match
+   where status in ('completed','forfeit')
+     and published = true
+     and home_score is not null and away_score is not null
+)
+select competition_id,
+       team_id,
+       count(*)::int                                   as played,
+       count(*) filter (where gf > ga)::int            as wins,
+       count(*) filter (where gf = ga)::int            as draws,
+       count(*) filter (where gf < ga)::int            as losses,
+       sum(gf)::int                                    as goals_for,
+       sum(ga)::int                                    as goals_against,
+       (sum(gf) - sum(ga))::int                        as goal_difference,
+       (count(*) filter (where gf > ga) * 3
+        + count(*) filter (where gf = ga))::int        as points
+  from results
+ group by competition_id, team_id;
+

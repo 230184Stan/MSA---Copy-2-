@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Flag, Loader2, Save } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
@@ -16,7 +17,10 @@ interface MatchData {
   referee_id: string | null;
   home_team: { name: string } | null;
   away_team: { name: string } | null;
-  competition: { name: string } | null;
+  competition: {
+    name: string;
+    division?: { name: string } | null;
+  } | null;
 }
 interface Referee {
   id: string;
@@ -84,10 +88,18 @@ function MatchCard({
   return (
     <article className="card p-4 space-y-3">
       <div>
-        <p className="text-xs text-pitch-600">
-          {m.competition?.name} · {formatKickoff(m.kickoff_at)}
-          {m.venue ? ` · ${m.venue}` : ''}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-full bg-pitch-800 text-white text-xs font-bold px-2.5 py-1">
+            {m.competition?.division?.name ?? m.competition?.name ?? 'Division'}
+          </span>
+          <p className="text-xs text-pitch-600">
+            {m.competition?.name && m.competition?.division?.name
+              ? `${m.competition.name} · `
+              : ''}
+            {formatKickoff(m.kickoff_at)}
+            {m.venue ? ` · ${m.venue}` : ''}
+          </p>
+        </div>
         <div className="mt-2 grid grid-cols-[1fr_auto_auto_auto_1fr] items-center gap-2">
           <span className="font-semibold text-right truncate">{m.home_team?.name ?? 'Home'}</span>
           <input
@@ -153,6 +165,9 @@ function MatchCard({
           {saving ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Save className="w-4 h-4" aria-hidden />}
           Save result
         </button>
+        <Link to={`/matches/${m.id}/events`} className="btn-secondary">
+          Goals and cards
+        </Link>
         {saved && <span className="text-sm text-pitch-700 font-medium">Saved ✓</span>}
       </div>
     </article>
@@ -172,7 +187,9 @@ export default function ResultsPage() {
     const { data, error: err } = await supabase
       .from('match')
       .select(
-        'id, kickoff_at, venue, status, home_score, away_score, published, referee_id, home_team:home_team_id(name), away_team:away_team_id(name), competition:competition_id(name)'
+        `id, kickoff_at, venue, status, home_score, away_score, published, referee_id,
+          home_team:home_team_id(name), away_team:away_team_id(name),
+          competition:competition_id(name, division:division_id(name))`
       )
       .order('kickoff_at', { ascending: true });
     if (err) {
@@ -185,7 +202,21 @@ export default function ResultsPage() {
             ...(row as unknown as MatchData),
             home_team: one(row.home_team as { name: string } | { name: string }[] | null),
             away_team: one(row.away_team as { name: string } | { name: string }[] | null),
-            competition: one(row.competition as { name: string } | { name: string }[] | null),
+            competition: (() => {
+              const c = one(
+                row.competition as
+                  | { name: string; division?: { name: string } | { name: string }[] | null }
+                  | { name: string; division?: { name: string } | { name: string }[] | null }[]
+                  | null
+              );
+              if (!c) return null;
+              return {
+                name: c.name,
+                division: one(
+                  (c.division as { name: string } | { name: string }[] | null | undefined) ?? null
+                ),
+              };
+            })(),
           };
         })
       );

@@ -170,12 +170,16 @@ with results as (
   select competition_id, home_team_id as team_id,
          home_score as gf, away_score as ga
     from public.match
-   where status in ('completed','forfeit') and home_score is not null and away_score is not null
+   where status in ('completed','forfeit')
+     and published = true
+     and home_score is not null and away_score is not null
   union all
   select competition_id, away_team_id,
          away_score, home_score
     from public.match
-   where status in ('completed','forfeit') and home_score is not null and away_score is not null
+   where status in ('completed','forfeit')
+     and published = true
+     and home_score is not null and away_score is not null
 )
 select competition_id,
        team_id,

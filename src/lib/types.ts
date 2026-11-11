@@ -74,9 +74,25 @@ export interface Match {
 }
 
 export interface MatchWithTeams extends Match {
-  home_team: { id: string; name: string; club_id: string };
-  away_team: { id: string; name: string; club_id: string };
-  competition: { id: string; name: string; division_id: string };
+  home_team: {
+    id: string;
+    name: string;
+    club_id: string;
+    club?: { id: string; name: string } | null;
+  };
+  away_team: {
+    id: string;
+    name: string;
+    club_id: string;
+    club?: { id: string; name: string } | null;
+  };
+  competition: {
+    id: string;
+    name: string;
+    division_id: string;
+    division?: { id: string; name: string; level: number | null } | null;
+  };
+  /** Convenience fields filled after load (optional) */
   home_club?: { id: string; name: string };
   away_club?: { id: string; name: string };
 }

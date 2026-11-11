@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
 import type { Division, Season, Role } from '@/lib/types';
 import { checkEligibility } from '@/lib/eligibility';
+import PlayerAvatar from '@/components/PlayerAvatar';
+import { usePlayerPhotoUrls } from '@/lib/photos';
 import {
   ArrowLeft,
   Users,
@@ -20,6 +22,7 @@ interface PlayerRow {
   full_name: string;
   dob: string;
   gender: 'male' | 'female';
+  photo_path: string | null;
   created_at: string;
 }
 
@@ -95,6 +98,8 @@ export default function PlayersPage() {
   const [regError, setRegError] = useState<string | null>(null);
   const [regSubmitting, setRegSubmitting] = useState(false);
 
+  const photoUrls = usePlayerPhotoUrls(players);
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -125,11 +130,21 @@ export default function PlayersPage() {
         .order('level', { ascending: true, nullsFirst: false })
         .order('name'),
       supabase.from('season').select('*').eq('is_current', true).maybeSingle(),
-      supabase.from('player').select('id, full_name, dob, gender, created_at').order('full_name'),
+      supabase
+        .from('player')
+        .select('id, full_name, dob, gender, photo_path, created_at')
+        .order('full_name'),
     ]);
 
     if (divRes.error || seasonRes.error) {
       setError('Could not load reference data.');
+      setLoading(false);
+      return;
+    }
+    if (playerRes.error) {
+      setError(
+        'Could not load players. If you have just updated the app, run the latest database setup file (ALL_IN_ONE_setup.sql) in Supabase, then refresh.'
+      );
       setLoading(false);
       return;
     }
@@ -425,11 +440,19 @@ export default function PlayersPage() {
             return (
               <li key={p.id} className="card p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-lg">{p.full_name}</p>
-                    <p className="text-sm text-pitch-600">
-                      {genderLabels[p.gender]} · Born {formatDate(p.dob)} · {calcAge(p.dob)} yrs
-                    </p>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <PlayerAvatar name={p.full_name} url={photoUrls[p.id]} size="md" />
+                    <div className="min-w-0">
+                      <Link
+                        to={`/players/${p.id}`}
+                        className="block font-semibold text-lg truncate hover:text-pitch-600 hover:underline"
+                      >
+                        {p.full_name}
+                      </Link>
+                      <p className="text-sm text-pitch-600">
+                        {genderLabels[p.gender]} · Born {formatDate(p.dob)} · {calcAge(p.dob)} yrs
+                      </p>
+                    </div>
                   </div>
                   {canManage && regs.length === 0 && (
                     <button

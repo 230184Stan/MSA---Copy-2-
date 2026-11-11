@@ -23,6 +23,10 @@ const CompetitionsPage = lazy(() => import('@/routes/CompetitionsPage'));
 const ResultsPage = lazy(() => import('@/routes/ResultsPage'));
 const UsersPage = lazy(() => import('@/routes/UsersPage'));
 const MovesPage = lazy(() => import('@/routes/MovesPage'));
+const PlayerProfilePage = lazy(() => import('@/routes/PlayerProfilePage'));
+const DisciplinePage = lazy(() => import('@/routes/DisciplinePage'));
+const MatchEventsPage = lazy(() => import('@/routes/MatchEventsPage'));
+const RolloverPage = lazy(() => import('@/routes/RolloverPage'));
 
 function PageLoading() {
   return (
@@ -70,6 +74,14 @@ export default function App() {
                 }
               />
               <Route
+                path="players/:id"
+                element={
+                  <ProtectedRoute roles={['club_manager', 'admin']}>
+                    <PlayerProfilePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="admin/clubs"
                 element={
                   <ProtectedRoute roles={['club_manager', 'admin']}>
@@ -87,7 +99,32 @@ export default function App() {
                 }
               />
 
+              <Route
+                path="rollover"
+                element={
+                  <ProtectedRoute roles={['club_manager', 'admin']}>
+                    <RolloverPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="discipline"
+                element={
+                  <ProtectedRoute roles={['club_manager', 'admin']}>
+                    <DisciplinePage />
+                  </ProtectedRoute>
+                }
+              />
+
               {/* Referees and admins */}
+              <Route
+                path="matches/:id/events"
+                element={
+                  <ProtectedRoute roles={['referee', 'admin']}>
+                    <MatchEventsPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="matches/manage"
                 element={

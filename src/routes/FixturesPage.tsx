@@ -34,17 +34,45 @@ function StatusBadge({ status }: { status: MatchStatus }) {
   return <span className="badge bg-pitch-100 text-pitch-600">Scheduled</span>;
 }
 
+/** Division name for a match (from nested competition.division, with fallbacks). */
+function divisionLabel(m: MatchWithTeams): string {
+  const div = m.competition?.division;
+  if (div?.name) return div.name;
+  if (m.competition?.name) return m.competition.name;
+  return 'Unknown division';
+}
+
+function clubName(
+  team: MatchWithTeams['home_team'] | undefined,
+  fallback?: { name: string } | null
+): string | null {
+  return team?.club?.name ?? fallback?.name ?? null;
+}
+
 function MatchRow({ m }: { m: MatchWithTeams }) {
   const { date, time } = formatKickoff(m.kickoff_at);
   const hasScore = m.home_score != null && m.away_score != null;
+  const homeClub = clubName(m.home_team, m.home_club);
+  const awayClub = clubName(m.away_team, m.away_club);
+  const division = divisionLabel(m);
 
   return (
     <li className="card p-4 hover:border-pitch-300 transition-colors">
+      {/* Division / competition label — easy to read on a phone */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center rounded-full bg-pitch-800 text-white text-xs font-bold px-2.5 py-1">
+          {division}
+        </span>
+        {m.competition?.name && m.competition.name !== division && (
+          <span className="text-xs text-pitch-600 truncate">{m.competition.name}</span>
+        )}
+      </div>
+
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 text-right">
-          <p className="font-semibold truncate">{m.home_team.name}</p>
-          {m.home_club && (
-            <p className="text-xs text-pitch-500 truncate">{m.home_club.name}</p>
+          <p className="font-semibold truncate">{m.home_team?.name ?? 'Home'}</p>
+          {homeClub && (
+            <p className="text-xs text-pitch-500 truncate">{homeClub}</p>
           )}
         </div>
 
@@ -54,9 +82,7 @@ function MatchRow({ m }: { m: MatchWithTeams }) {
               {m.home_score} <span className="text-pitch-400">-</span> {m.away_score}
             </span>
           ) : (
-            <span className="font-display font-bold text-sm text-pitch-500">
-              {time}
-            </span>
+            <span className="font-display font-bold text-sm text-pitch-500">{time}</span>
           )}
           <div className="mt-1">
             <StatusBadge status={m.status} />
@@ -64,9 +90,9 @@ function MatchRow({ m }: { m: MatchWithTeams }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="font-semibold truncate">{m.away_team.name}</p>
-          {m.away_club && (
-            <p className="text-xs text-pitch-500 truncate">{m.away_club.name}</p>
+          <p className="font-semibold truncate">{m.away_team?.name ?? 'Away'}</p>
+          {awayClub && (
+            <p className="text-xs text-pitch-500 truncate">{awayClub}</p>
           )}
         </div>
       </div>
@@ -90,6 +116,32 @@ function MatchRow({ m }: { m: MatchWithTeams }) {
   );
 }
 
+interface DivisionGroup {
+  key: string;
+  label: string;
+  level: number;
+  matches: MatchWithTeams[];
+}
+
+function groupByDivision(list: MatchWithTeams[]): DivisionGroup[] {
+  const map = new Map<string, DivisionGroup>();
+  for (const m of list) {
+    const div = m.competition?.division;
+    const key = div?.id ?? m.competition?.division_id ?? m.competition_id ?? 'unknown';
+    const label = divisionLabel(m);
+    const level = div?.level ?? 99;
+    let g = map.get(key);
+    if (!g) {
+      g = { key, label, level, matches: [] };
+      map.set(key, g);
+    }
+    g.matches.push(m);
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => a.level - b.level || a.label.localeCompare(b.label)
+  );
+}
+
 export default function FixturesPage() {
   const [matches, setMatches] = useState<MatchWithTeams[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,16 +153,27 @@ export default function FixturesPage() {
     async function load() {
       setLoading(true);
       setError(null);
+      // Pull division name + club names so each card can show “Men’s A” etc.
       const { data, error } = await supabase
         .from('match')
         .select(
-          'id, competition_id, home_team_id, away_team_id, kickoff_at, venue, status, home_score, away_score, published, created_at, home_team:home_team_id(id, name, club_id), away_team:away_team_id(id, name, club_id), competition:competition_id(id, name, division_id)'
+          `
+          id, competition_id, home_team_id, away_team_id, kickoff_at, venue,
+          status, home_score, away_score, published, created_at,
+          home_team:home_team_id(id, name, club_id, club:club_id(id, name)),
+          away_team:away_team_id(id, name, club_id, club:club_id(id, name)),
+          competition:competition_id(
+            id, name, division_id,
+            division:division_id(id, name, level)
+          )
+        `
         )
         .eq('published', true)
         .order('kickoff_at', { ascending: true });
       if (cancelled) return;
       if (error) {
         setError('Could not load matches. Check your connection and try again.');
+        console.error(error);
       } else {
         setMatches((data ?? []) as unknown as MatchWithTeams[]);
       }
@@ -138,6 +201,7 @@ export default function FixturesPage() {
   );
 
   const shown = tab === 'fixtures' ? fixtures : results;
+  const groups = useMemo(() => groupByDivision(shown), [shown]);
 
   return (
     <div className="space-y-4">
@@ -150,7 +214,7 @@ export default function FixturesPage() {
 
       <h1 className="font-display font-bold text-2xl">Fixtures &amp; Results</h1>
       <p className="text-pitch-700">
-        All upcoming and finished matches across Madang competitions.
+        Matches grouped by division so you can see which competition each game belongs to.
       </p>
 
       {/* Tabs */}
@@ -200,12 +264,28 @@ export default function FixturesPage() {
         </div>
       )}
 
-      {!loading && !error && shown.length > 0 && (
-        <ul className="space-y-2">
-          {shown.map((m) => (
-            <MatchRow key={m.id} m={m} />
+      {!loading && !error && groups.length > 0 && (
+        <div className="space-y-6">
+          {groups.map((g) => (
+            <section key={g.key} aria-labelledby={`div-${g.key}`}>
+              <h2
+                id={`div-${g.key}`}
+                className="font-display font-bold text-lg text-pitch-900 mb-2 flex items-center gap-2"
+              >
+                <span className="inline-block w-1.5 h-5 rounded-full bg-pitch-600" aria-hidden />
+                {g.label}
+                <span className="text-sm font-normal text-pitch-500">
+                  ({g.matches.length})
+                </span>
+              </h2>
+              <ul className="space-y-2">
+                {g.matches.map((m) => (
+                  <MatchRow key={m.id} m={m} />
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
