@@ -83,7 +83,13 @@ insert into competition (id, season_id, division_id, name) values
 on conflict (season_id, division_id) do update set name = excluded.name;
 
 -- COMPETITION ENTRIES
-insert into competition_entry (competition_id, team_id) values
-  ('55555555-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000001'),
-  ('55555555-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000002')
+-- Only teams that are in the competition's own division are entered. This keeps the sample data
+-- re-runnable: once a demo team has been moved to another division it is not put back here.
+insert into competition_entry (competition_id, team_id)
+select c.id, t.id
+  from competition c
+  join team t on t.id in ('44444444-0000-0000-0000-000000000001',
+                          '44444444-0000-0000-0000-000000000002')
+ where c.id = '55555555-0000-0000-0000-000000000001'
+   and t.division_id = c.division_id
 on conflict (competition_id, team_id) do nothing;

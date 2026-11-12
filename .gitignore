@@ -29,7 +29,8 @@ dist-ssr
 .env.*
 !.env.example
 
-# Local dumps / backups
+# Local dumps / backups (these can contain passwords and personal data)
 *.dump
-supabase-backup.sql
+supabase-backup*.sql
 *.sql.bak
+pg_dump*

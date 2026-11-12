@@ -16,6 +16,8 @@ Roles: **admin**, **club manager**, **referee**, and the **public**.
 - Season rollover with “Ageing out” list for Under 18 players
 - One active registration per player (enforced in the database)
 - Eligibility checks (gender + age cut-off stored on the season)
+- Teams can only be entered in, and play matches in, their own division (enforced in the database)
+- Fixtures and standings are shown separately for each division, with a division filter
 - Division moves run in a single database transaction
 
 ---
@@ -43,6 +45,9 @@ Roles: **admin**, **club manager**, **referee**, and the **public**.
    - `1_coastal_united_mens_b_justice_league.sql`
    - `2_madang_rangers_mens_b_avengers.sql`
    - `3_mens_b_competition_and_fixtures.sql`
+   - `4_fix_division_mismatches.sql` — run this if any fixture or table shows a team from the
+     wrong division. It swaps in the same club's team from the right division, leaves players and
+     results alone, and tells you about anything it could not fix. Safe to run more than once.
 
 ### 2. Front-end setup
 
@@ -125,7 +130,8 @@ pg_dump "YOUR-SESSION-POOLER-URI" \
 ```
 
 **Never commit** `supabase-backup.sql` or any file containing passwords.  
-Rotate the database password if it was ever shared.
+Do not save the connection string in a note inside the project folder; keep it in a password manager.  
+Rotate the database password if it was ever shared (Supabase → Project Settings → Database → Reset database password).
 
 ---
 
@@ -141,7 +147,7 @@ msa-png/
 │   └── main.tsx
 ├── supabase/
 │   ├── ALL_IN_ONE_setup.sql   # Run this in Supabase SQL Editor
-│   ├── migrations/            # Numbered migrations (001–013)
+│   ├── migrations/            # Numbered migrations (001–014)
 │   └── sample-data/           # Optional demo clubs & fixtures
 ├── .env.example
 ├── package.json

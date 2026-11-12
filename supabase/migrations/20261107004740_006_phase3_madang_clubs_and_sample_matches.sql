@@ -54,7 +54,13 @@ WHERE NOT EXISTS (
     AND m.home_team_id   = '44444444-0000-0000-0000-000000000001'
     AND m.away_team_id   = '44444444-0000-0000-0000-000000000002'
     AND m.kickoff_at     = v.kickoff
-);
+)
+  AND NOT EXISTS (
+    -- skip the sample match if either demo team is no longer in this competition's division
+    SELECT 1 FROM team t JOIN competition c ON c.id = '55555555-0000-0000-0000-000000000001'
+    WHERE t.id IN ('44444444-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000002')
+      AND t.division_id IS DISTINCT FROM c.division_id
+  );
 
 -- Coastal United home game (round 2): 0 - 3
 INSERT INTO match (competition_id, home_team_id, away_team_id, kickoff_at, venue, status, home_score, away_score, published)
@@ -68,4 +74,10 @@ WHERE NOT EXISTS (
     AND m.home_team_id   = '44444444-0000-0000-0000-000000000002'
     AND m.away_team_id   = '44444444-0000-0000-0000-000000000001'
     AND m.kickoff_at     = '2026-10-17 14:00:00+10'::timestamptz
-);
+)
+  AND NOT EXISTS (
+    -- skip the sample match if either demo team is no longer in this competition's division
+    SELECT 1 FROM team t JOIN competition c ON c.id = '55555555-0000-0000-0000-000000000001'
+    WHERE t.id IN ('44444444-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000002')
+      AND t.division_id IS DISTINCT FROM c.division_id
+  );

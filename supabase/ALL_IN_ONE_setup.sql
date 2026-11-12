@@ -1,4 +1,5 @@
--- MSA: complete database setup (migrations 001-012). Safe to run more than once.
+-- MSA: complete database setup (migrations 001-014). Safe to run more than once.
+-- Paste into Supabase > SQL Editor > New query > Run.
 
 -- ===== 20261106100000_001_schema.sql =====
 /*
@@ -417,7 +418,7 @@ grant select, insert, update, delete on public.profiles, public.player, public.r
                 public.competition, public.competition_entry, public.match, public.match_event,
                 public.transfer_window to authenticated;
 
--- ===== 20261106124853_003_seed_divisions.sql.sql =====
+-- ===== 20261106124853_003_seed_divisions.sql =====
 /*
 # Seed data: five divisions, current season, demo clubs/teams/competitions
 
@@ -503,12 +504,18 @@ insert into competition (id, season_id, division_id, name) values
 on conflict (season_id, division_id) do update set name = excluded.name;
 
 -- COMPETITION ENTRIES
-insert into competition_entry (competition_id, team_id) values
-  ('55555555-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000001'),
-  ('55555555-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000002')
+-- Only teams that are in the competition's own division are entered. This keeps the sample data
+-- re-runnable: once a demo team has been moved to another division it is not put back here.
+insert into competition_entry (competition_id, team_id)
+select c.id, t.id
+  from competition c
+  join team t on t.id in ('44444444-0000-0000-0000-000000000001',
+                          '44444444-0000-0000-0000-000000000002')
+ where c.id = '55555555-0000-0000-0000-000000000001'
+   and t.division_id = c.division_id
 on conflict (competition_id, team_id) do nothing;
 
--- ===== 20261106125009_004_fix_team_insert_policy.sql.sql =====
+-- ===== 20261106125009_004_fix_team_insert_policy.sql =====
 /*
 # Fix team INSERT policy
 
@@ -526,7 +533,7 @@ create policy "team_insert_own_club_or_admin" on team
   for insert to authenticated
   with check (public.is_admin() or club_id = public.my_club_id());
 
--- ===== 20261106125733_005_auto_profile.sql.sql =====
+-- ===== 20261106125733_005_auto_profile.sql =====
 /*
 # Auto-create profile on signup
 
@@ -573,7 +580,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- ===== 20261107004740_006_phase3_madang_clubs_and_sample_matches.sql.sql =====
+-- ===== 20261107004740_006_phase3_madang_clubs_and_sample_matches.sql =====
 /*
 # Phase 3 — Madang club rebrand + sample matches
 
@@ -630,7 +637,13 @@ WHERE NOT EXISTS (
     AND m.home_team_id   = '44444444-0000-0000-0000-000000000001'
     AND m.away_team_id   = '44444444-0000-0000-0000-000000000002'
     AND m.kickoff_at     = v.kickoff
-);
+)
+  AND NOT EXISTS (
+    -- skip the sample match if either demo team is no longer in this competition's division
+    SELECT 1 FROM team t JOIN competition c ON c.id = '55555555-0000-0000-0000-000000000001'
+    WHERE t.id IN ('44444444-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000002')
+      AND t.division_id IS DISTINCT FROM c.division_id
+  );
 
 -- Coastal United home game (round 2): 0 - 3
 INSERT INTO match (competition_id, home_team_id, away_team_id, kickoff_at, venue, status, home_score, away_score, published)
@@ -644,7 +657,13 @@ WHERE NOT EXISTS (
     AND m.home_team_id   = '44444444-0000-0000-0000-000000000002'
     AND m.away_team_id   = '44444444-0000-0000-0000-000000000001'
     AND m.kickoff_at     = '2026-10-17 14:00:00+10'::timestamptz
-);
+)
+  AND NOT EXISTS (
+    -- skip the sample match if either demo team is no longer in this competition's division
+    SELECT 1 FROM team t JOIN competition c ON c.id = '55555555-0000-0000-0000-000000000001'
+    WHERE t.id IN ('44444444-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000002')
+      AND t.division_id IS DISTINCT FROM c.division_id
+  );
 
 -- ===== 20261107120000_007_registration_rules.sql =====
 /*
@@ -2117,3 +2136,96 @@ select competition_id,
   from results
  group by competition_id, team_id;
 
+-- ===== 20261110110000_014_division_integrity.sql =====
+/*
+# 014 — Teams only play in their own division
+
+## The rule
+A team belongs to one division (team.division_id). From now on:
+  - a team can only be ENTERED in a competition of its own division, and
+  - a match can only be scheduled between two teams of that competition's division.
+So a Men's B team can never appear in a Men's A fixture or table.
+
+## How it is enforced
+Two triggers that run for every write (the app, the API and the SQL editor alike):
+  competition_entry : on insert, or when the team or competition changes
+  match             : on insert, or when the competition or either team changes
+They give a plain-language message, for example:
+  "Coastal United FC is a Men's B team, so it cannot be entered in the Men's A 2026 competition."
+
+## What it does NOT do
+Rows that are ALREADY wrong are left alone, so applying this never fails and recording a score
+on an old fixture still works. Run supabase/sample-data/4_fix_division_mismatches.sql to repair
+the known case. Changing a team's division does not move it out of competitions it is already in,
+so after changing a team's division, check its competition entries.
+*/
+
+create or replace function public.competition_entry_division_guard()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_team      text;
+  v_team_div  uuid;
+  v_team_divn text;
+  v_comp      text;
+  v_comp_div  uuid;
+  v_comp_divn text;
+begin
+  select t.name, t.division_id, d.name into v_team, v_team_div, v_team_divn
+    from public.team t left join public.division d on d.id = t.division_id
+   where t.id = new.team_id;
+  select c.name, c.division_id, d.name into v_comp, v_comp_div, v_comp_divn
+    from public.competition c join public.division d on d.id = c.division_id
+   where c.id = new.competition_id;
+
+  if v_team_div is null then
+    raise exception '% has no division yet, so it cannot be entered in the % competition. Set its division first.', v_team, v_comp;
+  end if;
+  if v_team_div is distinct from v_comp_div then
+    raise exception '% is a % team, so it cannot be entered in the % competition (%).', v_team, v_team_divn, v_comp, v_comp_divn;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.competition_entry_division_guard() from public, anon, authenticated;
+
+drop trigger if exists competition_entry_division_guard_trg on public.competition_entry;
+create trigger competition_entry_division_guard_trg
+  before insert or update of competition_id, team_id on public.competition_entry
+  for each row execute function public.competition_entry_division_guard();
+
+create or replace function public.match_division_guard()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_comp      text;
+  v_comp_div  uuid;
+  rec         record;
+begin
+  select c.name, c.division_id into v_comp, v_comp_div
+    from public.competition c
+   where c.id = new.competition_id;
+
+  for rec in
+    select t.name, t.division_id, d.name as division_name
+      from public.team t left join public.division d on d.id = t.division_id
+     where t.id in (new.home_team_id, new.away_team_id)
+  loop
+    if rec.division_id is null then
+      raise exception '% has no division yet, so it cannot play in the % competition. Set its division first.', rec.name, v_comp;
+    end if;
+    if rec.division_id is distinct from v_comp_div then
+      raise exception '% is a % team, but this match is in %. Teams can only play in their own division.', rec.name, rec.division_name, v_comp;
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+revoke execute on function public.match_division_guard() from public, anon, authenticated;
+
+drop trigger if exists match_division_guard_trg on public.match;
+create trigger match_division_guard_trg
+  before insert or update of competition_id, home_team_id, away_team_id on public.match
+  for each row execute function public.match_division_guard();
