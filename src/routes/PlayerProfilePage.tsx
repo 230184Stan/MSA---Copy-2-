@@ -400,6 +400,36 @@ export default function PlayerProfilePage() {
             </p>
           </section>
 
+          <section className="space-y-3">
+            <h2 className="font-display font-bold text-lg">Registration history</h2>
+            {history.length === 0 ? (
+              <div className="card p-6 text-center text-pitch-600">
+                This player is not registered to a team yet.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {history.map((h) => (
+                  <li key={h.id} className="card p-4 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{h.team}</p>
+                      <p className="text-sm text-pitch-600">
+                        {h.division}
+                        {h.season ? `, ${h.season}` : ''}
+                      </p>
+                      <p className="text-xs text-pitch-600 mt-1">
+                        From {formatDay(h.start_date)}
+                        {h.end_date ? ` to ${formatDay(h.end_date)}` : ''}
+                      </p>
+                    </div>
+                    <span className={`badge text-xs shrink-0 ${STATUS_STYLE[h.status]}`}>
+                      {STATUS_TEXT[h.status]}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <section className="card p-5 space-y-3">
             <h2 className="font-display font-bold text-lg">Photo</h2>
             <div className="flex flex-wrap gap-2">
@@ -436,36 +466,6 @@ export default function PlayerProfilePage() {
               player&rsquo;s permission, or a parent&rsquo;s if the player is under 18. Photos are
               private and can only be seen by signed-in club managers and administrators.
             </p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="font-display font-bold text-lg">Registration history</h2>
-            {history.length === 0 ? (
-              <div className="card p-6 text-center text-pitch-600">
-                This player is not registered to a team yet.
-              </div>
-            ) : (
-              <ul className="space-y-2">
-                {history.map((h) => (
-                  <li key={h.id} className="card p-4 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold">{h.team}</p>
-                      <p className="text-sm text-pitch-600">
-                        {h.division}
-                        {h.season ? `, ${h.season}` : ''}
-                      </p>
-                      <p className="text-xs text-pitch-600 mt-1">
-                        From {formatDay(h.start_date)}
-                        {h.end_date ? ` to ${formatDay(h.end_date)}` : ''}
-                      </p>
-                    </div>
-                    <span className={`badge text-xs shrink-0 ${STATUS_STYLE[h.status]}`}>
-                      {STATUS_TEXT[h.status]}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </section>
         </>
       )}
