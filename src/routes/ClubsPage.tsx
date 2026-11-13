@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, Plus, Loader2, Shield } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Building2, Plus, Loader2, Shield, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
 import type { Club, Team, Division } from '@/lib/types';
@@ -218,7 +219,11 @@ export default function ClubsPage() {
                 <article key={club.id} className="card p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h3 className="font-semibold text-lg">{club.name}</h3>
+                      <h3 className="font-semibold text-lg">
+                        <Link to={`/clubs/${club.id}`} className="hover:text-pitch-600 hover:underline">
+                          {club.name}
+                        </Link>
+                      </h3>
                       <p className="text-sm text-pitch-600">
                         {club.founded ? `Founded ${club.founded}` : 'Founding year not set'}
                         {club.contact ? ` · ${club.contact}` : ''}
@@ -228,8 +233,14 @@ export default function ClubsPage() {
                       {clubTeams.length} team{clubTeams.length === 1 ? '' : 's'}
                     </span>
                   </div>
+                  <Link
+                    to={`/clubs/${club.id}`}
+                    className="mt-3 inline-flex items-center gap-1 text-pitch-700 font-medium min-h-[44px] hover:underline"
+                  >
+                    <Users className="w-4 h-4" aria-hidden /> View players &amp; records
+                  </Link>
                   {clubTeams.length > 0 && (
-                    <ul className="mt-3 divide-y divide-pitch-100">
+                    <ul className="mt-1 divide-y divide-pitch-100">
                       {clubTeams.map((t) => (
                         <li key={t.id} className="py-2 flex items-center gap-2">
                           <Shield className="w-4 h-4 text-pitch-500 shrink-0" aria-hidden />
