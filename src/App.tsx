@@ -18,6 +18,7 @@ import SignUpPage from '@/routes/SignUpPage';
 const DashboardPage = lazy(() => import('@/routes/DashboardPage'));
 const PlayersPage = lazy(() => import('@/routes/PlayersPage'));
 const ClubsPage = lazy(() => import('@/routes/ClubsPage'));
+const ClubDetailPage = lazy(() => import('@/routes/ClubDetailPage'));
 const SeasonsPage = lazy(() => import('@/routes/SeasonsPage'));
 const CompetitionsPage = lazy(() => import('@/routes/CompetitionsPage'));
 const ResultsPage = lazy(() => import('@/routes/ResultsPage'));
@@ -78,6 +79,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['club_manager', 'admin']}>
                     <PlayerProfilePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clubs/:id"
+                element={
+                  <ProtectedRoute roles={['club_manager', 'admin']}>
+                    <ClubDetailPage />
                   </ProtectedRoute>
                 }
               />
