@@ -7,7 +7,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const navLink = (path: string) =>
-    `px-3 py-2 rounded-lg hover:bg-pitch-600 min-h-[44px] flex items-center transition-colors ${
+    `flex-1 sm:flex-none justify-center px-2 sm:px-3 py-2 rounded-lg hover:bg-pitch-600 min-h-[44px] flex items-center transition-colors ${
       location.pathname === path ? 'bg-pitch-600' : ''
     }`;
 
@@ -19,14 +19,20 @@ export default function Layout() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-pitch-700 text-white sticky top-0 z-10 shadow-md">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+        {/*
+          Phone: row 1 = logo + sign-in / account, row 2 = the four page links spread evenly.
+          Wider screens: everything on one row.
+        */}
+        <div className="max-w-5xl mx-auto px-4 py-2 sm:py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-2 gap-y-1">
           <Link to="/" className="flex items-center gap-2 min-h-[44px]">
             <Trophy className="w-6 h-6 text-gold-400" aria-hidden />
-            <span className="font-display font-bold text-lg leading-tight">
-              MSA
-            </span>
+            <span className="font-display font-bold text-lg leading-tight">MSA</span>
           </Link>
-          <nav className="flex items-center gap-1 text-sm font-medium">
+
+          <nav
+            aria-label="Main"
+            className="order-last sm:order-none w-full sm:w-auto flex items-center gap-1 text-sm font-medium"
+          >
             <Link to="/" className={navLink('/')}>
               Home
             </Link>
@@ -37,16 +43,20 @@ export default function Layout() {
               Standings
             </Link>
             <Link to="/divisions" className={navLink('/divisions')}>
-              <span className="hidden sm:inline">Divisions</span>
-              <span className="sm:hidden">Divs</span>
+              Divisions
             </Link>
+          </nav>
+
+          <div className="flex items-center gap-1 text-sm font-medium">
             {session ? (
               <>
                 <Link
                   to="/dashboard"
                   className="px-3 py-2 rounded-lg hover:bg-pitch-600 min-h-[44px] flex items-center gap-1"
+                  aria-label="Dashboard"
                 >
                   <LayoutDashboard className="w-4 h-4" aria-hidden />
+                  <span className="sm:hidden">Dashboard</span>
                   <span className="hidden sm:inline">
                     {profile?.full_name?.split(' ')[0] || 'Dashboard'}
                   </span>
@@ -63,12 +73,12 @@ export default function Layout() {
             ) : (
               <Link
                 to="/signin"
-                className="px-3 py-2 rounded-lg bg-gold-500 text-pitch-900 hover:bg-gold-400 min-h-[44px] flex items-center font-semibold"
+                className="px-4 py-2 rounded-lg bg-gold-500 text-pitch-900 hover:bg-gold-400 min-h-[44px] flex items-center font-semibold whitespace-nowrap"
               >
                 Sign in
               </Link>
             )}
-          </nav>
+          </div>
         </div>
       </header>
 
@@ -77,9 +87,7 @@ export default function Layout() {
       </main>
 
       <footer className="bg-pitch-800 text-pitch-100 text-center text-sm py-4">
-        <div className="max-w-5xl mx-auto px-4">
-          Madang Soccer Association
-        </div>
+        <div className="max-w-5xl mx-auto px-4">Madang Soccer Association</div>
       </footer>
     </div>
   );

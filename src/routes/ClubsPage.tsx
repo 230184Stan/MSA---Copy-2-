@@ -229,7 +229,7 @@ export default function ClubsPage() {
                         {club.contact ? ` · ${club.contact}` : ''}
                       </p>
                     </div>
-                    <span className="badge bg-pitch-100 text-pitch-700">
+                    <span className="badge bg-pitch-100 text-pitch-700 shrink-0 whitespace-nowrap">
                       {clubTeams.length} team{clubTeams.length === 1 ? '' : 's'}
                     </span>
                   </div>
@@ -244,8 +244,8 @@ export default function ClubsPage() {
                       {clubTeams.map((t) => (
                         <li key={t.id} className="py-2 flex items-center gap-2">
                           <Shield className="w-4 h-4 text-pitch-500 shrink-0" aria-hidden />
-                          <span className="font-medium">{t.name}</span>
-                          <span className="ml-auto text-sm text-pitch-600">{divName(t.division_id)}</span>
+                          <span className="font-medium min-w-0 break-words">{t.name}</span>
+                          <span className="ml-auto text-sm text-pitch-600 shrink-0 whitespace-nowrap pl-2">{divName(t.division_id)}</span>
                         </li>
                       ))}
                     </ul>

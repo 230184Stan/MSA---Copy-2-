@@ -95,15 +95,17 @@ function MatchRow({ m }: { m: FixtureRow }) {
 
   return (
     <li className="card p-4 hover:border-pitch-300 transition-colors">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1 text-right">
-          <p className="font-semibold truncate">{m.home_team.name}</p>
+      {/* Phone: home team, score/time, away team stacked and centred so full names show.
+          From sm up: home | score | away on one row. */}
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="min-w-0 text-center sm:flex-1 sm:text-right">
+          <p className="font-semibold break-words sm:truncate">{m.home_team.name}</p>
           {m.home_team.club && (
-            <p className="text-xs text-pitch-500 truncate">{m.home_team.club}</p>
+            <p className="text-xs text-pitch-500 break-words sm:truncate">{m.home_team.club}</p>
           )}
         </div>
 
-        <div className="flex flex-col items-center px-3 shrink-0">
+        <div className="flex items-center justify-center gap-3 sm:flex-col sm:gap-0 sm:px-3 shrink-0">
           {hasScore ? (
             <span className="font-display font-extrabold text-xl tabular-nums">
               {m.home_score} <span className="text-pitch-400">-</span> {m.away_score}
@@ -111,15 +113,15 @@ function MatchRow({ m }: { m: FixtureRow }) {
           ) : (
             <span className="font-display font-bold text-sm text-pitch-500">{time}</span>
           )}
-          <div className="mt-1">
+          <div className="sm:mt-1">
             <StatusBadge status={m.status} />
           </div>
         </div>
 
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold truncate">{m.away_team.name}</p>
+        <div className="min-w-0 text-center sm:flex-1 sm:text-left">
+          <p className="font-semibold break-words sm:truncate">{m.away_team.name}</p>
           {m.away_team.club && (
-            <p className="text-xs text-pitch-500 truncate">{m.away_team.club}</p>
+            <p className="text-xs text-pitch-500 break-words sm:truncate">{m.away_team.club}</p>
           )}
         </div>
       </div>

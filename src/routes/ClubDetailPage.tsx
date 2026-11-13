@@ -196,11 +196,11 @@ export default function ClubDetailPage() {
             const teamTotal = players.filter((p) => p.teamId === team.id).length;
             return (
               <section key={team.id} className="space-y-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <Shield className="w-5 h-5 text-pitch-500 shrink-0" aria-hidden />
                   <h2 className="font-display font-bold text-lg">{team.name}</h2>
                   <span className="text-sm text-pitch-600">{team.division}</span>
-                  <span className="badge bg-pitch-100 text-pitch-700 ml-auto">
+                  <span className="badge bg-pitch-100 text-pitch-700 ml-auto whitespace-nowrap">
                     {teamTotal} player{teamTotal === 1 ? '' : 's'}
                   </span>
                 </div>
