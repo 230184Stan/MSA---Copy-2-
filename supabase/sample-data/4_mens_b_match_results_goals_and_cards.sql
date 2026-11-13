@@ -27,7 +27,7 @@ declare
   v_added  integer := 0;
   v_extra  integer := 0;
   rec      record;
-  m        record;
+  gm       record;
   v_regs   uuid[];
   v_side   text;
   v_goals  integer;
@@ -88,7 +88,7 @@ begin
   end if;
 
   -- Other completed games with no events yet: goals that match the score, plus a home yellow.
-  for m in
+  for gm in
     select id, home_team_id, away_team_id, home_score, away_score, kickoff_at
       from match
      where status in ('completed', 'forfeit')
@@ -99,8 +99,8 @@ begin
      order by kickoff_at
   loop
     foreach v_side in array array['home', 'away'] loop
-      v_team  := case when v_side = 'home' then m.home_team_id else m.away_team_id end;
-      v_goals := case when v_side = 'home' then m.home_score else m.away_score end;
+      v_team  := case when v_side = 'home' then gm.home_team_id else gm.away_team_id end;
+      v_goals := case when v_side = 'home' then gm.home_score else gm.away_score end;
 
       select array_agg(r.id order by p.full_name) into v_regs
         from registration r join player p on p.id = r.player_id
@@ -108,20 +108,20 @@ begin
 
       if v_regs is null then
         raise notice 'A team in the game on % has no registered players, so its goals and cards were skipped.',
-          to_char(m.kickoff_at at time zone 'Pacific/Port_Moresby', 'DD Mon YYYY');
+          to_char(gm.kickoff_at at time zone 'Pacific/Port_Moresby', 'DD Mon YYYY');
         continue;
       end if;
 
       for i in 1 .. v_goals loop
         insert into match_event (match_id, registration_id, event_type, minute)
-        values (m.id, v_regs[1 + ((i * 3 + extract(day from m.kickoff_at)::int) % array_length(v_regs, 1))],
+        values (gm.id, v_regs[1 + ((i * 3 + extract(day from gm.kickoff_at)::int) % array_length(v_regs, 1))],
                 'goal', least(10 + i * 22, 89));
         v_extra := v_extra + 1;
       end loop;
 
       if v_side = 'home' then
         insert into match_event (match_id, registration_id, event_type, minute)
-        values (m.id, v_regs[1 + ((extract(day from m.kickoff_at)::int * 2 + 1) % array_length(v_regs, 1))],
+        values (gm.id, v_regs[1 + ((extract(day from gm.kickoff_at)::int * 2 + 1) % array_length(v_regs, 1))],
                 'yellow_card', 55);
         v_extra := v_extra + 1;
       end if;
