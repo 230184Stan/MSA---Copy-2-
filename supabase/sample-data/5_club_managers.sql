@@ -5,7 +5,8 @@
 -- anyone who knows this file knows these passwords.
 --
 -- To add a manager, add a row to the list. To remove one, delete its row.
--- Format:  ('login email', 'full name', 'club name exactly as it appears on the Clubs page')
+-- Format:  ('login email', 'old email (or NULL)', 'full name', 'club name exactly as it appears on the Clubs page')
+-- "old email": if that login already exists it is renamed to the new email instead of making a second account.
 --
 -- One account manages ONE club (that is how the app links a manager to a club).
 -- If you run this again it does not duplicate anyone: it resets that person's password,
@@ -22,15 +23,15 @@ declare
 begin
   for rec in
     select * from (values
-      ('smith@madangsa.org',              'Smith',                       'Madang Rangers'),
-      ('coastal.manager@madangsa.org',    'Coastal United Manager',      'Coastal United'),
-      ('alexishafen.manager@madangsa.org','Alexishafen FC Manager',      'Alexishafen FC'),
-      ('rempi.manager@madangsa.org',      'Rempi FC Manager',            'Rempi FC'),
-      ('yagaum.manager@madangsa.org',     'Yagaum United Manager',       'Yagaum United'),
-      ('siar.manager@madangsa.org',       'Siar Athletic Manager',       'Siar Athletic'),
-      ('baitabag.manager@madangsa.org',   'Baitabag Youth Manager',      'Baitabag Youth'),
-      ('transgogol.manager@madangsa.org', 'Transgogol Youth Manager',   'Transgogol Youth')
-    ) as t(email, full_name, club_name)
+      ('smith@madangsa.org',      null,                                'Smith',                    'Madang Rangers'),
+      ('cmanager@madangsa.org',   'coastal.manager@madangsa.org',      'Coastal United Manager',   'Coastal United'),
+      ('amanager@madangsa.org',   'alexishafen.manager@madangsa.org',  'Alexishafen FC Manager',   'Alexishafen FC'),
+      ('rmanager@madangsa.org',   'rempi.manager@madangsa.org',        'Rempi FC Manager',         'Rempi FC'),
+      ('ymanager@madangsa.org',   'yagaum.manager@madangsa.org',       'Yagaum United Manager',    'Yagaum United'),
+      ('smanager@madangsa.org',   'siar.manager@madangsa.org',         'Siar Athletic Manager',    'Siar Athletic'),
+      ('bmanager@madangsa.org',   'baitabag.manager@madangsa.org',     'Baitabag Youth Manager',   'Baitabag Youth'),
+      ('tmanager@madangsa.org',   'transgogol.manager@madangsa.org',   'Transgogol Youth Manager', 'Transgogol Youth')
+    ) as t(email, old_email, full_name, club_name)
   loop
     select id into v_club from public.club where lower(name) = lower(rec.club_name);
     if v_club is null then
@@ -40,6 +41,18 @@ begin
     end if;
 
     select id into v_user from auth.users where lower(email) = lower(rec.email);
+
+    -- Already created earlier under the old email? Rename that login rather than adding a second one.
+    if v_user is null and rec.old_email is not null then
+      select id into v_user from auth.users where lower(email) = lower(rec.old_email);
+      if v_user is not null then
+        update auth.users set email = rec.email, updated_at = now() where id = v_user;
+        update auth.identities
+           set identity_data = jsonb_set(identity_data, '{email}', to_jsonb(rec.email::text)),
+               updated_at = now()
+         where user_id = v_user and provider = 'email';
+      end if;
+    end if;
 
     if v_user is null then
       v_user := gen_random_uuid();
