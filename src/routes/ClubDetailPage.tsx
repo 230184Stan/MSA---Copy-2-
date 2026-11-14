@@ -8,6 +8,7 @@ import PlayerAvatar from '@/components/PlayerAvatar';
 import { usePlayerPhotoUrls } from '@/lib/photos';
 import { fetchDisciplineTotals, type DisciplineTotals } from '@/lib/playerRecord';
 import { calcAge, one } from '@/lib/util';
+import { positionLabel, positionRank, type PlayingPosition } from '@/lib/positions';
 
 interface ClubInfo {
   id: string;
@@ -31,6 +32,7 @@ interface RosterPlayer {
   dob: string;
   gender: 'male' | 'female';
   photo_path: string | null;
+  playing_position: PlayingPosition | null;
 }
 
 export default function ClubDetailPage() {
@@ -88,7 +90,7 @@ export default function ClubDetailPage() {
 
     const regRes = await supabase
       .from('registration')
-      .select('id, team_id, status, player:player_id(id, full_name, dob, gender, photo_path)')
+      .select('id, team_id, status, player:player_id(id, full_name, dob, gender, photo_path, playing_position)')
       .in('team_id', teamList.map((t) => t.id))
       .in('status', ['active', 'suspended']);
     if (regRes.error) {
@@ -109,7 +111,12 @@ export default function ClubDetailPage() {
       if (!p) continue;
       roster.push({ ...p, registrationId: r.id, teamId: r.team_id, status: r.status });
     }
-    roster.sort((a, b) => a.full_name.localeCompare(b.full_name));
+    // Squad order: goalkeepers, defenders, midfielders, forwards, then players with no position yet.
+    roster.sort(
+      (a, b) =>
+        positionRank(a.playing_position) - positionRank(b.playing_position) ||
+        a.full_name.localeCompare(b.full_name)
+    );
     setPlayers(roster);
     setLoading(false);
 
@@ -225,6 +232,11 @@ export default function ClubDetailPage() {
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold truncate">{p.full_name}</p>
                               <p className="text-sm text-pitch-600">
+                                {p.playing_position && (
+                                  <span className="font-semibold text-pitch-800">
+                                    {positionLabel(p.playing_position)} ·{' '}
+                                  </span>
+                                )}
                                 {p.gender === 'female' ? 'Female' : 'Male'} · {calcAge(p.dob)} yrs
                               </p>
                               <div className="flex flex-wrap gap-1.5 mt-1">
