@@ -1,3 +1,4 @@
+import { POSITIONS, positionLabel, type PlayingPosition } from '@/lib/positions';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
@@ -23,6 +24,7 @@ interface PlayerRow {
   dob: string;
   gender: 'male' | 'female';
   photo_path: string | null;
+  playing_position: PlayingPosition | null;
   created_at: string;
 }
 
@@ -88,6 +90,7 @@ export default function PlayersPage() {
     full_name: '',
     dob: '',
     gender: 'male' as 'male' | 'female',
+    playing_position: '' as '' | PlayingPosition,
     team_id: '',
     division_id: '',
   });
@@ -132,7 +135,7 @@ export default function PlayersPage() {
       supabase.from('season').select('*').eq('is_current', true).maybeSingle(),
       supabase
         .from('player')
-        .select('id, full_name, dob, gender, photo_path, created_at')
+        .select('id, full_name, dob, gender, photo_path, playing_position, created_at')
         .order('full_name'),
     ]);
 
@@ -250,7 +253,12 @@ export default function PlayersPage() {
     // Insert player + registration in sequence
     const { data: newPlayer, error: playerErr } = await supabase
       .from('player')
-      .insert({ full_name: form.full_name.trim(), dob: form.dob, gender: form.gender })
+      .insert({
+        full_name: form.full_name.trim(),
+        dob: form.dob,
+        gender: form.gender,
+        playing_position: form.playing_position || null,
+      })
       .select('id, full_name, dob, gender, created_at')
       .single();
 
@@ -275,7 +283,7 @@ export default function PlayersPage() {
       );
     } else {
       setShowForm(false);
-      setForm({ full_name: '', dob: '', gender: 'male', team_id: '', division_id: '' });
+      setForm({ full_name: '', dob: '', gender: 'male', playing_position: '', team_id: '', division_id: '' });
     }
     setSubmitting(false);
     load();
@@ -439,17 +447,22 @@ export default function PlayersPage() {
             const regs = registrations[p.id] ?? [];
             return (
               <li key={p.id} className="card p-4">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                   <div className="flex items-center gap-3 min-w-0">
                     <PlayerAvatar name={p.full_name} url={photoUrls[p.id]} size="md" />
                     <div className="min-w-0">
                       <Link
                         to={`/players/${p.id}`}
-                        className="block font-semibold text-lg truncate hover:text-pitch-600 hover:underline"
+                        className="block font-semibold text-lg break-words hover:text-pitch-600 hover:underline"
                       >
                         {p.full_name}
                       </Link>
                       <p className="text-sm text-pitch-600">
+                        {p.playing_position && (
+                          <span className="font-semibold text-pitch-800">
+                            {positionLabel(p.playing_position)} ·{' '}
+                          </span>
+                        )}
                         {genderLabels[p.gender]} · Born {formatDate(p.dob)} · {calcAge(p.dob)} yrs
                       </p>
                     </div>
@@ -461,7 +474,7 @@ export default function PlayersPage() {
                         setRegForm({ team_id: '', division_id: '' });
                         setRegError(null);
                       }}
-                      className="text-sm font-semibold text-pitch-600 hover:text-pitch-800 shrink-0"
+                      className="text-sm font-semibold text-pitch-600 hover:text-pitch-800 shrink-0 min-h-[44px] px-1"
                     >
                       Register to team
                     </button>
@@ -574,6 +587,23 @@ export default function PlayersPage() {
                 >
                   <option value="male">Male</option>
                   <option value="female">Female</option>
+                </select>
+              </Field>
+
+              <Field label="Position (optional)">
+                <select
+                  value={form.playing_position}
+                  onChange={(e) =>
+                    setForm({ ...form, playing_position: e.target.value as '' | PlayingPosition })
+                  }
+                  className="input"
+                >
+                  <option value="">Not set</option>
+                  {POSITIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
                 </select>
               </Field>
 

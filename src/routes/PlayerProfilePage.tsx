@@ -1,3 +1,4 @@
+import { POSITIONS, positionLabel, type PlayingPosition } from '@/lib/positions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Camera, Loader2, Trash2, UserRound } from 'lucide-react';
@@ -21,6 +22,7 @@ interface Player {
   dob: string;
   gender: 'male' | 'female';
   photo_path: string | null;
+  playing_position: PlayingPosition | null;
   created_at: string;
 }
 
@@ -95,6 +97,7 @@ export default function PlayerProfilePage() {
   const navigate = useNavigate();
   const { profile: me } = useAuth();
   const isAdmin = me?.role === 'admin';
+  const canEditPosition = isAdmin || me?.role === 'club_manager';
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const from = (location.state as { from?: string; fromLabel?: string } | null) ?? null;
   const fileInput = useRef<HTMLInputElement>(null);
@@ -120,7 +123,7 @@ export default function PlayerProfilePage() {
     const [playerRes, regRes] = await Promise.all([
       supabase
         .from('player')
-        .select('id, full_name, dob, gender, photo_path, created_at')
+        .select('id, full_name, dob, gender, photo_path, playing_position, created_at')
         .eq('id', id)
         .maybeSingle(),
       supabase
@@ -230,6 +233,22 @@ export default function PlayerProfilePage() {
     setBusy(false);
   }
 
+  async function onPositionChange(value: string) {
+    if (!player) return;
+    const next = (value || null) as PlayingPosition | null;
+    setError(null);
+    setOk(null);
+    setBusy(true);
+    const { error: err } = await supabase
+      .from('player')
+      .update({ playing_position: next })
+      .eq('id', player.id);
+    setBusy(false);
+    if (err) return setError(errMsg(err, 'Could not save the position.'));
+    setPlayer({ ...player, playing_position: next });
+    setOk(next ? `Position set to ${positionLabel(next)}.` : 'Position cleared.');
+  }
+
   async function onDeletePlayer() {
     if (!player) return;
     setError(null);
@@ -287,6 +306,30 @@ export default function PlayerProfilePage() {
                 {player.gender === 'female' ? 'Female' : 'Male'}, {calcAge(player.dob)} years old
               </p>
               <p className="text-sm text-pitch-600">Born {formatDay(player.dob)}</p>
+              {canEditPosition ? (
+                <label className="block text-sm text-left">
+                  <span className="font-semibold text-pitch-800">Position</span>
+                  <select
+                    className="input mt-1"
+                    value={player.playing_position ?? ''}
+                    onChange={(e) => onPositionChange(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="">Not set</option>
+                    {POSITIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                player.playing_position && (
+                  <p className="font-semibold text-pitch-800">
+                    {positionLabel(player.playing_position)}
+                  </p>
+                )
+              )}
               {banLeft !== null && (
                 <p className="inline-flex items-center gap-2 badge bg-ember-500/10 text-ember-700">
                   Suspended: {banLeft} {banLeft === 1 ? 'match' : 'matches'} left
