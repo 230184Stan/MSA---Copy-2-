@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Camera, Loader2, Trash2, UserRound } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/lib/auth';
 import { PageHeader, ErrorNote, SuccessNote, LoadingBlock } from '@/components/ui';
 import PlayerAvatar from '@/components/PlayerAvatar';
-import { removePlayerPhoto, uploadPlayerPhoto, usePlayerPhotoUrls } from '@/lib/photos';
+import { PHOTO_BUCKET, removePlayerPhoto, uploadPlayerPhoto, usePlayerPhotoUrls } from '@/lib/photos';
 import { calcAge, errMsg, formatDay, formatKickoff, one } from '@/lib/util';
 import {
   fetchPlayerRecord,
@@ -91,6 +92,10 @@ const STATUS_STYLE: Record<string, string> = {
 export default function PlayerProfilePage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { profile: me } = useAuth();
+  const isAdmin = me?.role === 'admin';
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const from = (location.state as { from?: string; fromLabel?: string } | null) ?? null;
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -225,6 +230,25 @@ export default function PlayerProfilePage() {
     setBusy(false);
   }
 
+  async function onDeletePlayer() {
+    if (!player) return;
+    setError(null);
+    setOk(null);
+    setBusy(true);
+    const { data, error: err } = await supabase.rpc('delete_player', { p_player_id: player.id });
+    if (err) {
+      setBusy(false);
+      setConfirmingDelete(false);
+      setError(errMsg(err));
+      return;
+    }
+    // The profile is gone. Removing the photo file is best effort: if it fails, nothing breaks.
+    const photo = (data as string | null) ?? player.photo_path;
+    if (photo) await supabase.storage.from(PHOTO_BUCKET).remove([photo]);
+    navigate(from?.from ?? '/players', { replace: true });
+  }
+
+  const hasMatchRecord = totals.goals + totals.yellow + totals.red > 0;
   const active = suspensions.filter((x) => x.status === 'active');
   const banLeft = active.length ? Math.max(...active.map((x) => x.matches_remaining)) : null;
   const wins = games.filter((g) => g.result === 'W').length;
@@ -467,6 +491,62 @@ export default function PlayerProfilePage() {
               private and can only be seen by signed-in club managers and administrators.
             </p>
           </section>
+
+          {isAdmin && (
+            <section className="card p-5 space-y-3 border-ember-500/40">
+              <h2 className="font-display font-bold text-lg text-ember-700">Delete player</h2>
+              {hasMatchRecord ? (
+                <p className="text-sm text-pitch-700">
+                  {player.full_name} has goals or cards recorded in matches, so the profile cannot
+                  be deleted without changing past results.
+                </p>
+              ) : !confirmingDelete ? (
+                <>
+                  <p className="text-sm text-pitch-700">
+                    Permanently removes this profile with their registrations, suspensions, move
+                    requests and photo. This cannot be undone.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-secondary text-ember-700 border-ember-500/50"
+                    onClick={() => setConfirmingDelete(true)}
+                    disabled={busy}
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden /> Delete this player
+                  </button>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <p className="font-semibold text-ember-700">
+                    Delete {player.full_name} permanently?
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setConfirmingDelete(false)}
+                      disabled={busy}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary bg-ember-600 hover:bg-ember-700"
+                      onClick={onDeletePlayer}
+                      disabled={busy}
+                    >
+                      {busy ? (
+                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                      ) : (
+                        <Trash2 className="w-4 h-4" aria-hidden />
+                      )}
+                      Yes, delete permanently
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </div>
