@@ -46,6 +46,7 @@ Roles: **admin**, **club manager**, **referee**, and the **public**.
    - `2_madang_rangers_mens_b_avengers.sql`
    - `3_mens_b_competition_and_fixtures.sql`
    - `4_mens_b_match_results_goals_and_cards.sql` (goals, cards and suspensions for the completed games)
+   - `5_club_managers.sql` (club manager logins, each linked to an existing club)
    - `4_fix_division_mismatches.sql` — run this if any fixture or table shows a team from the
      wrong division. It swaps in the same club's team from the right division, leaves players and
      results alone, and tells you about anything it could not fix. Safe to run more than once.
