@@ -7,6 +7,7 @@ import { PageHeader, ErrorNote, SuccessNote } from '@/components/ui';
 import { errMsg } from '@/lib/util';
 import { buildZip, fetchBundle } from '@/lib/exportData';
 import { countSummary } from '@/lib/exportBuild';
+import { buildXlsx } from '@/lib/exportXlsx';
 
 export default function ExportPage() {
   const { profile } = useAuth();
@@ -30,7 +31,7 @@ export default function ExportPage() {
   const effectiveClub = isAdmin ? clubId : (profile?.club_id ?? '');
   const clubName = clubs.find((c) => c.id === effectiveClub)?.name;
 
-  async function onDownload() {
+  async function onDownload(excelOnly = false) {
     setError(null);
     setOk(null);
     if (!isAdmin && !effectiveClub) {
@@ -45,16 +46,29 @@ export default function ExportPage() {
         scopeLabel: effectiveClub ? `Club: ${clubName ?? effectiveClub}` : 'All clubs',
       });
       const n = countSummary(bundle);
-      setStatus('Packing files…');
-      const { blob, photosSaved, photosFailed } = await buildZip(bundle, photos, (d, t) =>
-        setStatus(`Adding photos… ${d} of ${t}`)
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      setStatus(excelOnly ? 'Building workbook…' : 'Packing files…');
       const stamp = new Date().toISOString().slice(0, 10);
       const slug = (clubName ?? 'all-clubs').replace(/[^\w-]+/g, '_');
+      let blob: Blob;
+      let photosSaved = 0;
+      let photosFailed = 0;
+      let fileName: string;
+      if (excelOnly) {
+        const bytes = await buildXlsx(bundle);
+        blob = new Blob([bytes as BlobPart], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        fileName = `MSA_player_records_${slug}_${stamp}.xlsx`;
+      } else {
+        ({ blob, photosSaved, photosFailed } = await buildZip(bundle, photos, (d, t) =>
+          setStatus(`Adding photos… ${d} of ${t}`)
+        ));
+        fileName = `msa-export_${slug}_${stamp}.zip`;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
       a.href = url;
-      a.download = `msa-export_${slug}_${stamp}.zip`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -62,7 +76,7 @@ export default function ExportPage() {
       setOk(
         `Downloaded ${n.players} player${n.players === 1 ? '' : 's'}, ${n.games} game record${n.games === 1 ? '' : 's'}, ` +
           `${n.events} goal/card event${n.events === 1 ? '' : 's'}, ${n.suspensions} suspension${n.suspensions === 1 ? '' : 's'}` +
-          (photos ? `, ${photosSaved} photo${photosSaved === 1 ? '' : 's'}` : '') +
+          (photos && !excelOnly ? `, ${photosSaved} photo${photosSaved === 1 ? '' : 's'}` : '') +
           (photosFailed ? ` (${photosFailed} photo${photosFailed === 1 ? '' : 's'} could not be read)` : '') +
           '.'
       );
@@ -119,10 +133,15 @@ export default function ExportPage() {
           Include photos (makes the file larger)
         </label>
 
-        <button type="button" className="btn-primary" onClick={onDownload} disabled={busy}>
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Download className="w-4 h-4" aria-hidden />}
-          {busy ? (status ?? 'Working…') : 'Download zip'}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-primary" onClick={() => onDownload(false)} disabled={busy}>
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Download className="w-4 h-4" aria-hidden />}
+            {busy ? (status ?? 'Working…') : 'Download zip (everything)'}
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => onDownload(true)} disabled={busy}>
+            <Download className="w-4 h-4" aria-hidden /> Download Excel only
+          </button>
+        </div>
         <p className="text-sm text-pitch-600">
           The files contain personal details of players, some of them children. Keep them safe and
           share them only with people who should have them.
