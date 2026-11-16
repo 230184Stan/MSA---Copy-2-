@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ChevronRight, Search, Shield, Users } from 'lucide-react';
+import { ChevronRight, Printer, Search, Shield, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
 import { PageHeader, ErrorNote, LoadingBlock } from '@/components/ui';
 import PlayerAvatar from '@/components/PlayerAvatar';
 import { usePlayerPhotoUrls } from '@/lib/photos';
 import { fetchDisciplineTotals, type DisciplineTotals } from '@/lib/playerRecord';
-import { calcAge, one } from '@/lib/util';
+import { calcAge, formatDay, one } from '@/lib/util';
 import { positionLabel, positionRank, type PlayingPosition } from '@/lib/positions';
 
 interface ClubInfo {
@@ -148,19 +148,32 @@ export default function ClubDetailPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={Users}
-        title={club?.name ?? 'Club'}
-        intro={
-          club
-            ? `${club.founded ? `Founded ${club.founded}` : 'Founding year not set'}${club.contact ? ` · ${club.contact}` : ''}`
-            : undefined
-        }
-        backTo="/admin/clubs"
-        backLabel="Clubs & teams"
-      />
+      <div className="print:hidden">
+        <PageHeader
+          icon={Users}
+          title={club?.name ?? 'Club'}
+          intro={
+            club
+              ? `${club.founded ? `Founded ${club.founded}` : 'Founding year not set'}${club.contact ? ` · ${club.contact}` : ''}`
+              : undefined
+          }
+          backTo="/admin/clubs"
+          backLabel="Clubs & teams"
+        />
+      </div>
 
-      <ErrorNote message={error} />
+      {club && (
+        <div className="hidden print:block border-b-2 border-pitch-700 pb-2">
+          <p className="font-display font-bold text-lg">Madang Soccer Association · {club.name} squad list</p>
+          <p className="text-xs">
+            Printed {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+      )}
+
+      <div className="print:hidden">
+        <ErrorNote message={error} />
+      </div>
       {loading && <LoadingBlock />}
 
       {!loading && notMine && (
@@ -175,8 +188,18 @@ export default function ClubDetailPage() {
 
       {!loading && club && (
         <>
+          {players.length > 0 && (
+            <button
+              type="button"
+              className="btn-secondary print:hidden"
+              onClick={() => window.print()}
+            >
+              <Printer className="w-4 h-4" aria-hidden /> Print squad
+            </button>
+          )}
+
           {players.length > 6 && (
-            <label className="relative block">
+            <label className="relative block print:hidden">
               <span className="sr-only">Search players by name</span>
               <Search
                 className="w-4 h-4 text-pitch-500 absolute left-3 top-1/2 -translate-y-1/2"
@@ -231,6 +254,7 @@ export default function ClubDetailPage() {
                             <PlayerAvatar name={p.full_name} url={photoUrls[p.id]} size="sm" />
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold truncate">{p.full_name}</p>
+                              <p className="hidden print:block text-xs">Born {formatDay(p.dob)}</p>
                               <p className="text-sm text-pitch-600">
                                 {p.playing_position && (
                                   <span className="font-semibold text-pitch-800">
@@ -262,7 +286,7 @@ export default function ClubDetailPage() {
                                 )}
                               </div>
                             </div>
-                            <ChevronRight className="w-5 h-5 text-pitch-400 shrink-0" aria-hidden />
+                            <ChevronRight className="w-5 h-5 text-pitch-400 shrink-0 print:hidden" aria-hidden />
                           </Link>
                         </li>
                       );

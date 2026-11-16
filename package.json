@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
+    "fflate": "^0.8.3",
     "lucide-react": "^0.446.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -33,5 +34,5 @@
     "typescript-eslint": "^8.3.0",
     "vite": "^7.3.7"
   },
-  "description": "Madang Soccer Association \u2014 fixtures, results, standings, and club management for Papua New Guinea"
+  "description": "Madang Soccer Association — fixtures, results, standings, and club management for Papua New Guinea"
 }

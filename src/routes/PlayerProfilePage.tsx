@@ -1,7 +1,7 @@
 import { POSITIONS, positionLabel, type PlayingPosition } from '@/lib/positions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Camera, Loader2, Trash2, UserRound } from 'lucide-react';
+import { Camera, Loader2, Printer, Trash2, UserRound } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
 import { PageHeader, ErrorNote, SuccessNote, LoadingBlock } from '@/components/ui';
@@ -278,15 +278,25 @@ export default function PlayerProfilePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={UserRound}
-        title="Player profile"
-        backTo={from?.from ?? '/players'}
-        backLabel={from?.fromLabel ?? 'Players'}
-      />
+      <div className="print:hidden">
+        <PageHeader
+          icon={UserRound}
+          title="Player profile"
+          backTo={from?.from ?? '/players'}
+          backLabel={from?.fromLabel ?? 'Players'}
+        />
+      </div>
 
-      <ErrorNote message={error} />
-      <SuccessNote message={ok} />
+      {/* Only appears on paper */}
+      <div className="hidden print:block border-b-2 border-pitch-700 pb-2">
+        <p className="font-display font-bold text-lg">Madang Soccer Association · Player record</p>
+        <p className="text-xs">Printed {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+      </div>
+
+      <div className="print:hidden space-y-6">
+        <ErrorNote message={error} />
+        <SuccessNote message={ok} />
+      </div>
 
       {loading && <LoadingBlock />}
 
@@ -307,7 +317,7 @@ export default function PlayerProfilePage() {
               </p>
               <p className="text-sm text-pitch-600">Born {formatDay(player.dob)}</p>
               {canEditPosition ? (
-                <label className="block text-sm text-left">
+                <label className="block text-sm text-left print:hidden">
                   <span className="font-semibold text-pitch-800">Position</span>
                   <select
                     className="input mt-1"
@@ -323,12 +333,11 @@ export default function PlayerProfilePage() {
                     ))}
                   </select>
                 </label>
-              ) : (
-                player.playing_position && (
-                  <p className="font-semibold text-pitch-800">
-                    {positionLabel(player.playing_position)}
-                  </p>
-                )
+              ) : null}
+              {player.playing_position && (
+                <p className={`font-semibold text-pitch-800 ${canEditPosition ? 'hidden print:block' : ''}`}>
+                  {positionLabel(player.playing_position)}
+                </p>
               )}
               {banLeft !== null && (
                 <p className="inline-flex items-center gap-2 badge bg-ember-500/10 text-ember-700">
@@ -343,6 +352,14 @@ export default function PlayerProfilePage() {
                   </span>
                 </p>
               )}
+              <button
+                type="button"
+                className="btn-secondary print:hidden"
+                onClick={() => window.print()}
+                disabled={!recordLoaded}
+              >
+                <Printer className="w-4 h-4" aria-hidden /> Print
+              </button>
             </div>
           </section>
 
@@ -497,7 +514,7 @@ export default function PlayerProfilePage() {
             )}
           </section>
 
-          <section className="card p-5 space-y-3">
+          <section className="card p-5 space-y-3 print:hidden">
             <h2 className="font-display font-bold text-lg">Photo</h2>
             <div className="flex flex-wrap gap-2">
               <button
@@ -536,7 +553,7 @@ export default function PlayerProfilePage() {
           </section>
 
           {isAdmin && (
-            <section className="card p-5 space-y-3 border-ember-500/40">
+            <section className="card p-5 space-y-3 border-ember-500/40 print:hidden">
               <h2 className="font-display font-bold text-lg text-ember-700">Delete player</h2>
               {hasMatchRecord ? (
                 <p className="text-sm text-pitch-700">
