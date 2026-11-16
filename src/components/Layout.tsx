@@ -18,7 +18,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="bg-pitch-700 text-white sticky top-0 z-10 shadow-md">
+      <header className="print:hidden bg-pitch-700 text-white sticky top-0 z-10 shadow-md">
         {/*
           Phone: row 1 = logo + sign-in / account, row 2 = the four page links spread evenly.
           Wider screens: everything on one row.
@@ -86,7 +86,7 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <footer className="bg-pitch-800 text-pitch-100 text-center text-sm py-4">
+      <footer className="print:hidden bg-pitch-800 text-pitch-100 text-center text-sm py-4">
         <div className="max-w-5xl mx-auto px-4">Madang Soccer Association</div>
       </footer>
     </div>

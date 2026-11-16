@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   ShieldAlert,
   RefreshCw,
+  Download,
 } from 'lucide-react';
 
 const roleLabels: Record<string, string> = {
@@ -105,6 +106,15 @@ export default function DashboardPage() {
         : 'See which of your players are suspended.',
       icon: ShieldAlert,
       to: '/discipline',
+      allowed: isAdmin || isManager,
+    },
+    {
+      label: 'Export & print',
+      desc: isAdmin
+        ? 'Download player details and records (with photos) for another database, or print them.'
+        : 'Download your club\'s player details and records, or print them.',
+      icon: Download,
+      to: '/export',
       allowed: isAdmin || isManager,
     },
   ];
