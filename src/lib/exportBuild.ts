@@ -215,6 +215,15 @@ function age(dob: string, on: Date): number | '' {
 
 // ---------- the four spreadsheets ----------
 
+/** One spreadsheet: used for both the CSV files and the formatted Excel workbook. */
+export interface Sheet {
+  name: string;
+  header: string[];
+  rows: unknown[][];
+  /** Columns holding an ISO date (yyyy-mm-dd), so Excel can show them as real dates. */
+  dateCols: number[];
+}
+
 export interface CsvFiles {
   players: string;
   gameLog: string;
@@ -223,17 +232,25 @@ export interface CsvFiles {
 }
 
 export function buildCsvs(b: ExportBundle): CsvFiles {
+  const [players, gameLog, goalsAndCards, suspensions] = buildSheets(b).map((s) => toCsv(s.header, s.rows));
+  return { players, gameLog, goalsAndCards, suspensions };
+}
+
+export function buildSheets(b: ExportBundle): Sheet[] {
   const m = buildModel(b);
   const now = new Date(b.exported_at);
 
   // 1. One row per player
-  const players = toCsv(
-    [
-      'Player ID', 'Name', 'Date of birth', 'Age', 'Gender', 'Position', 'Club', 'Team', 'Division',
+  const players: Sheet = {
+    name: 'Players',
+    dateCols: [1],
+    header: [
+      'Name', 'Date of birth', 'Age', 'Gender', 'Position', 'Club', 'Team', 'Division',
       'Season', 'Registration status', 'Games played', 'Wins', 'Draws', 'Losses', 'Goals',
       'Yellow cards', 'Red cards', 'Suspensions (total)', 'Matches left on current ban', 'Photo file',
+      'Player ID',
     ],
-    m.players.map((p) => {
+    rows: m.players.map((p) => {
       const pid = str(p.id);
       const reg = currentReg(m.regsByPlayer.get(pid) ?? []);
       const team = reg ? m.teams.get(str(reg.team_id)) : undefined;
@@ -245,7 +262,6 @@ export function buildCsvs(b: ExportBundle): CsvFiles {
         .filter((s) => str(s.status) === 'active')
         .reduce((mx, s) => Math.max(mx, Number(s.matches_banned) - (m.servedByBan.get(str(s.id)) ?? 0)), 0);
       return [
-        pid,
         p.full_name,
         p.dob,
         age(str(p.dob), now),
@@ -266,9 +282,10 @@ export function buildCsvs(b: ExportBundle): CsvFiles {
         bans.length,
         left,
         photoFileName(p) ?? '',
+        pid,
       ];
-    })
-  );
+    }),
+  };
 
   // 2. One row per player per game
   const gameRows: unknown[][] = [];
@@ -285,11 +302,13 @@ export function buildCsvs(b: ExportBundle): CsvFiles {
       ]);
     }
   }
-  const gameLog = toCsv(
-    ['Player', 'Team', 'Date', 'Competition', 'Home team', 'Away team', 'Score', 'Result', 'Goals',
+  const gameLog: Sheet = {
+    name: 'Game log',
+    dateCols: [2],
+    header: ['Player', 'Team', 'Date', 'Competition', 'Home team', 'Away team', 'Score', 'Result', 'Goals',
      'Goal minutes', 'Yellow cards', 'Yellow minutes', 'Red cards', 'Red minutes', 'Venue', 'Player ID'],
-    gameRows
-  );
+    rows: gameRows,
+  };
 
   // 3. One row per goal / card / substitution
   const evRows: unknown[][] = [];
@@ -311,10 +330,12 @@ export function buildCsvs(b: ExportBundle): CsvFiles {
     }
   }
   evRows.sort((a, b) => str(a[0]).localeCompare(str(b[0])) || str(a[2]).localeCompare(str(b[2])) || Number(a[7]) - Number(b[7]));
-  const goalsAndCards = toCsv(
-    ['Player', 'Team', 'Date', 'Competition', 'Home team', 'Away team', 'Event', 'Minute', 'Player ID'],
-    evRows
-  );
+  const goalsAndCards: Sheet = {
+    name: 'Goals and cards',
+    dateCols: [2],
+    header: ['Player', 'Team', 'Date', 'Competition', 'Home team', 'Away team', 'Event', 'Minute', 'Player ID'],
+    rows: evRows,
+  };
 
   // 4. One row per suspension
   const susRows: unknown[][] = [];
@@ -339,13 +360,15 @@ export function buildCsvs(b: ExportBundle): CsvFiles {
       ]);
     }
   }
-  const suspensions = toCsv(
-    ['Player', 'Reason', 'Competition', 'Matches banned', 'Matches served', 'Matches left', 'Status',
+  const suspensions: Sheet = {
+    name: 'Suspensions',
+    dateCols: [9],
+    header: ['Player', 'Reason', 'Competition', 'Matches banned', 'Matches served', 'Matches left', 'Status',
      'Card shown in', 'Notes', 'Date recorded', 'Player ID'],
-    susRows
-  );
+    rows: susRows,
+  };
 
-  return { players, gameLog, goalsAndCards, suspensions };
+  return [players, gameLog, goalsAndCards, suspensions];
 }
 
 export function countSummary(b: ExportBundle) {
@@ -366,10 +389,13 @@ Made on:  ${b.exported_at}
 Scope:    ${b.scope}
 
 SPREADSHEETS (open in Excel, Google Sheets, LibreOffice)
-  players.csv          One row per player: details, team, games, goals, cards, bans.
-  game_log.csv         One row per player per game: score, result, goals, cards and minutes.
-  goals_and_cards.csv  One row per goal / card / substitution, with the match it was in.
-  suspensions.csv      One row per ban: reason, length, matches served and left.
+  MSA_player_records.xlsx   The formatted workbook: a Summary sheet, then Players, Game log,
+                       Goals and cards, Suspensions. Open this one to read or print.
+  csv/                 The same four tables as plain CSV, for importing into other software.
+                       players.csv: details, team, games, goals, cards, bans.
+                       game_log.csv: one row per player per game.
+                       goals_and_cards.csv: one row per goal / card / substitution.
+                       suspensions.csv: one row per ban, with matches served and left.
 
 FOR ANOTHER DATABASE
   import.sql           Loads all of this into another MSA database. Open that database's

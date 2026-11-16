@@ -86,9 +86,9 @@ export default function ExportPage() {
       <section className="card p-5 space-y-4">
         <h2 className="font-display font-bold text-lg">Download everything</h2>
         <p className="text-sm text-pitch-700">
-          One zip file with spreadsheets (players, game-by-game log, goals and cards, suspensions), an
-          <strong> import.sql</strong> file that loads it all into another MSA database, a JSON copy
-          and the player photos.
+          One zip file with a formatted Excel workbook (summary, players, game-by-game log, goals and
+          cards, suspensions), the same tables as CSV, an <strong>import.sql</strong> file that loads
+          it all into another MSA database, a JSON copy and the player photos.
         </p>
 
         {isAdmin ? (

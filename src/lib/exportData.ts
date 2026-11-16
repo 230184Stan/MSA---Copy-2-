@@ -11,6 +11,7 @@ import {
   type TableName,
 } from '@/lib/exportBuild';
 import { buildImportSql } from '@/lib/exportSql';
+import { buildXlsx } from '@/lib/exportXlsx';
 
 /**
  * Collects the data for an export and packs it into a zip.
@@ -140,10 +141,11 @@ export async function buildZip(
   const csv = buildCsvs(bundle);
   const files: Record<string, Uint8Array> = {
     'README.txt': enc.encode(README_TEXT(bundle)),
-    'players.csv': enc.encode(csv.players),
-    'game_log.csv': enc.encode(csv.gameLog),
-    'goals_and_cards.csv': enc.encode(csv.goalsAndCards),
-    'suspensions.csv': enc.encode(csv.suspensions),
+    'MSA_player_records.xlsx': await buildXlsx(bundle),
+    'csv/players.csv': enc.encode(csv.players),
+    'csv/game_log.csv': enc.encode(csv.gameLog),
+    'csv/goals_and_cards.csv': enc.encode(csv.goalsAndCards),
+    'csv/suspensions.csv': enc.encode(csv.suspensions),
     'import.sql': enc.encode(buildImportSql(bundle)),
     'data.json': enc.encode(JSON.stringify(bundle, null, 2)),
   };
