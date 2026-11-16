@@ -57,8 +57,11 @@
 }
 
 /* Printing: plain black on white, no shadows, and never split a card across two pages. */
+/* Zero page margin removes the browser's own header/footer (page title and web address);
+   the body padding puts the margin back for the content. */
+@page { margin: 0; }
 @media print {
-  body { background: #fff; font-size: 12px; }
+  body { background: #fff; font-size: 12px; padding: 12mm 14mm; }
   .card { box-shadow: none; break-inside: avoid; }
   main { max-width: none; padding: 0; }
   a { color: inherit; text-decoration: none; }
