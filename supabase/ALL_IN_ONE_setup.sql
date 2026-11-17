@@ -1,4 +1,4 @@
--- MSA: complete database setup (migrations 001-018). Safe to run more than once.
+-- MSA: complete database setup (migrations 001-019). Safe to run more than once.
 -- Paste into Supabase > SQL Editor > New query > Run.
 
 -- ===== 20261106100000_001_schema.sql =====
@@ -2484,3 +2484,22 @@ drop trigger if exists player_scouting_touch on public.player_scouting;
 create trigger player_scouting_touch
   before insert or update on public.player_scouting
   for each row execute function public.touch_player_scouting();
+
+-- ===== 20261118100000_019_scouting_provincial.sql =====
+/*
+# 019 — Scouting profile: remove national-team fields
+
+The association runs a provincial competition, so the national-team items added in 018 are
+not needed: citizenships, heritage, cap status, senior/youth caps and cap notes are removed
+from player_scouting. Everything else (birthplace, position, foot, size, system fit,
+intangibles, notes, injuries) stays.
+
+Any text already typed into those removed columns is deleted. Safe to run more than once.
+*/
+alter table public.player_scouting
+  drop column if exists citizenships,
+  drop column if exists heritage_notes,
+  drop column if exists cap_status,
+  drop column if exists senior_caps,
+  drop column if exists youth_caps,
+  drop column if exists cap_notes;
