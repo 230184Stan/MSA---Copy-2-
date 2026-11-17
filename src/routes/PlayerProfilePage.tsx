@@ -6,10 +6,12 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
 import { PageHeader, ErrorNote, SuccessNote, LoadingBlock } from '@/components/ui';
 import PlayerAvatar from '@/components/PlayerAvatar';
+import ScoutingSection from '@/components/ScoutingSection';
 import { PHOTO_BUCKET, removePlayerPhoto, uploadPlayerPhoto, usePlayerPhotoUrls } from '@/lib/photos';
 import { calcAge, errMsg, formatDay, formatKickoff, one } from '@/lib/util';
 import {
   fetchPlayerRecord,
+  localDay,
   type DisciplineTotals,
   type EventKind,
   type GameRecord,
@@ -483,6 +485,19 @@ export default function PlayerProfilePage() {
               missed through injury or suspension may still be listed.
             </p>
           </section>
+
+          {isAdmin && recordLoaded && (
+            <ScoutingSection
+              playerId={player.id}
+              dob={player.dob}
+              position={player.playing_position}
+              gameDays={games.map((g) => localDay(g.kickoffAt))}
+              totals={totals}
+              banMatchesLeft={suspensions
+                .filter((s) => s.status === 'active')
+                .reduce((m, s) => Math.max(m, s.matches_remaining), 0)}
+            />
+          )}
 
           <section className="space-y-3">
             <h2 className="font-display font-bold text-lg">Registration history</h2>
