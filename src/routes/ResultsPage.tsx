@@ -160,7 +160,12 @@ function MatchCard({
       )}
 
       <ErrorNote message={err} />
-      <div className="flex items-center gap-3">
+      {err?.startsWith('Record who scored') && (
+        <Link to={`/matches/${m.id}/events`} className="btn-primary w-full sm:w-auto">
+          Add the scorers now
+        </Link>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
         <button className="btn-primary" onClick={save} disabled={saving}>
           {saving ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Save className="w-4 h-4" aria-hidden />}
           Save result
