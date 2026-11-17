@@ -176,6 +176,16 @@ export default function MatchEventsPage() {
   const homeName = match?.home_team?.name ?? 'Home';
   const awayName = match?.away_team?.name ?? 'Away';
 
+  // Goals recorded for each side, to compare with the score.
+  const goalsFor = (s: 'home' | 'away') =>
+    events.filter(
+      (e) => e.event_type === 'goal' && e.registration_id && byRegistration.get(e.registration_id)?.side === s
+    ).length;
+  const goalsHome = goalsFor('home');
+  const goalsAway = goalsFor('away');
+  const hasScore = match?.home_score != null && match?.away_score != null;
+  const scorersComplete = hasScore && goalsHome === match?.home_score && goalsAway === match?.away_score;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -211,6 +221,17 @@ export default function MatchEventsPage() {
               {awayName}
             </p>
           </section>
+
+          {hasScore && (
+            <p
+              className={`rounded-xl p-3 text-sm font-medium ${scorersComplete ? 'bg-pitch-100 text-pitch-800' : 'bg-gold-400/30 text-gold-600'}`}
+              role="status"
+            >
+              {scorersComplete
+                ? 'Every goal in the score has a scorer recorded.'
+                : `Scorers recorded: ${homeName} ${goalsHome} of ${match?.home_score}, ${awayName} ${goalsAway} of ${match?.away_score}. A match can only be completed when these match the score.`}
+            </p>
+          )}
 
           {roster.length === 0 ? (
             <div className="card p-6 text-center text-pitch-700">
