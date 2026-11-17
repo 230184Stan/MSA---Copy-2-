@@ -9,14 +9,12 @@ import {
 } from "@/lib/positions";
 import { formatDay } from "@/lib/util";
 import {
-  CAP_LABEL,
   FOOT_LABEL,
   ageGroupStatus,
   availability,
   draftFromRow,
   perGame,
   rowFromDraft,
-  type CapStatus,
   type Foot,
   type InjuryRow,
   type ScoutingDraft,
@@ -246,7 +244,7 @@ export default function ScoutingSection({
       <div>
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display font-bold text-xl">
-            Scouting &amp; eligibility
+            Scouting &amp; age groups
           </h2>
           {!editing && (
             <button
@@ -273,71 +271,12 @@ export default function ScoutingSection({
       {editing ? (
         <section className="card p-5 space-y-5">
           <fieldset className="space-y-3">
-            <legend className="font-semibold text-pitch-800">
-              Eligibility
-            </legend>
-            <FormField label="Citizenships (separate with commas)">
-              <input
-                className="input"
-                value={draft.citizenships}
-                onChange={(e) => set("citizenships", e.target.value)}
-                placeholder="Papua New Guinea, Australia"
-              />
-            </FormField>
-            <FormField label="Place of birth">
+            <legend className="font-semibold text-pitch-800">Origin</legend>
+            <FormField label="Place of birth / home village">
               <input
                 className="input"
                 value={draft.birthplace}
                 onChange={(e) => set("birthplace", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Heritage (parents / grandparents' nationality)">
-              <textarea
-                className="input"
-                rows={2}
-                value={draft.heritage_notes}
-                onChange={(e) => set("heritage_notes", e.target.value)}
-              />
-            </FormField>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <FormField label="Cap status">
-                <select
-                  className="input"
-                  value={draft.cap_status}
-                  onChange={(e) =>
-                    set("cap_status", e.target.value as CapStatus)
-                  }
-                >
-                  {(Object.keys(CAP_LABEL) as CapStatus[]).map((c) => (
-                    <option key={c} value={c}>
-                      {CAP_LABEL[c]}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Senior caps">
-                <input
-                  className="input"
-                  inputMode="numeric"
-                  value={draft.senior_caps}
-                  onChange={(e) => set("senior_caps", e.target.value)}
-                />
-              </FormField>
-              <FormField label="Youth caps">
-                <input
-                  className="input"
-                  inputMode="numeric"
-                  value={draft.youth_caps}
-                  onChange={(e) => set("youth_caps", e.target.value)}
-                />
-              </FormField>
-            </div>
-            <FormField label="Cap notes (which association, last appearance, one-time switch)">
-              <textarea
-                className="input"
-                rows={2}
-                value={draft.cap_notes}
-                onChange={(e) => set("cap_notes", e.target.value)}
               />
             </FormField>
           </fieldset>
@@ -476,7 +415,9 @@ export default function ScoutingSection({
       ) : (
         <>
           <section className="card p-5 space-y-4">
-            <h3 className="font-semibold text-pitch-800">Eligibility</h3>
+            <h3 className="font-semibold text-pitch-800">
+              Age groups &amp; origin
+            </h3>
             <div
               className="flex flex-wrap gap-2"
               aria-label="Age-group eligibility"
@@ -493,38 +434,13 @@ export default function ScoutingSection({
             </div>
             <p className="text-xs text-pitch-600">
               Age groups are worked out from the birth year (born{" "}
-              {dob.slice(0, 4)}). Each competition&rsquo;s own regulations
-              decide.
+              {dob.slice(0, 4)}). Each competition&rsquo;s own rules decide.
             </p>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Fact label="Date of birth">{formatDay(dob)}</Fact>
-              <Fact label="Place of birth">{row?.birthplace}</Fact>
-              <Fact label="Citizenships">
-                {row?.citizenships?.length ? row.citizenships.join(", ") : ""}
+              <Fact label="Place of birth / home village">
+                {row?.birthplace}
               </Fact>
-              <Fact label="Cap status">
-                {row ? (
-                  <>
-                    {CAP_LABEL[row.cap_status]}
-                    {row.senior_caps !== null || row.youth_caps !== null
-                      ? ` · senior ${row.senior_caps ?? 0}, youth ${row.youth_caps ?? 0}`
-                      : ""}
-                  </>
-                ) : (
-                  ""
-                )}
-              </Fact>
-            </dl>
-            {row && row.cap_status !== "senior" && (
-              <p className="text-xs text-pitch-700 bg-pitch-50 rounded-lg p-2">
-                Not senior-capped, so a one-time change of association may still
-                be possible. Confirm against the current FIFA eligibility
-                regulations.
-              </p>
-            )}
-            <dl className="space-y-3">
-              <Notes label="Heritage" text={row?.heritage_notes} />
-              <Notes label="Cap notes" text={row?.cap_notes} />
             </dl>
           </section>
 
