@@ -486,11 +486,12 @@ export default function PlayerProfilePage() {
             </p>
           </section>
 
-          {isAdmin && recordLoaded && (
+          {(isAdmin || me?.role === 'club_manager') && recordLoaded && (
             <ScoutingSection
               playerId={player.id}
               dob={player.dob}
               position={player.playing_position}
+              isAdmin={isAdmin}
               gameDays={games.map((g) => localDay(g.kickoffAt))}
               totals={totals}
               banMatchesLeft={suspensions

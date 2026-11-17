@@ -12,19 +12,25 @@ import {
   FOOT_LABEL,
   ageGroupStatus,
   availability,
-  draftFromRow,
+  detailsDraft,
+  detailsRow,
+  notesDraft,
+  notesRow,
   perGame,
-  rowFromDraft,
+  type DetailsDraft,
+  type DetailsRow,
   type Foot,
   type InjuryRow,
-  type ScoutingDraft,
-  type ScoutingRow,
+  type NotesDraft,
+  type NotesRow,
 } from "@/lib/scouting";
 
 interface Props {
   playerId: string;
   dob: string;
   position: PlayingPosition | null;
+  /** Administrators see and edit everything; a club manager sees and edits facts and injuries only. */
+  isAdmin: boolean;
   /** yyyy-mm-dd of every game on record */
   gameDays: string[];
   totals: { goals: number; yellow: number; red: number };
@@ -93,21 +99,26 @@ const EMPTY_INJURY = {
   games_missed: "",
   notes: "",
 };
+const NOT_ALLOWED =
+  "Not allowed. You can only change details of players currently registered to your club.";
 
 export default function ScoutingSection({
   playerId,
   dob,
   position,
+  isAdmin,
   gameDays,
   totals,
   banMatchesLeft,
 }: Props) {
-  const [row, setRow] = useState<ScoutingRow | null>(null);
+  const [details, setDetails] = useState<DetailsRow | null>(null);
+  const [notes, setNotes] = useState<NotesRow | null>(null);
   const [injuries, setInjuries] = useState<InjuryRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<ScoutingDraft>(draftFromRow(null));
+  const [editing, setEditing] = useState<"details" | "notes" | null>(null);
+  const [dDraft, setDDraft] = useState<DetailsDraft>(detailsDraft(null));
+  const [nDraft, setNDraft] = useState<NotesDraft>(notesDraft(null));
   const [inj, setInj] = useState(EMPTY_INJURY);
   const [addingInjury, setAddingInjury] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -115,9 +126,9 @@ export default function ScoutingSection({
   const [ok, setOk] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [s, i] = await Promise.all([
+    const [d, i, n] = await Promise.all([
       supabase
-        .from("player_scouting")
+        .from("player_details")
         .select("*")
         .eq("player_id", playerId)
         .maybeSingle(),
@@ -126,16 +137,24 @@ export default function ScoutingSection({
         .select("*")
         .eq("player_id", playerId)
         .order("injured_on", { ascending: false }),
+      isAdmin
+        ? supabase
+            .from("player_scouting")
+            .select("*")
+            .eq("player_id", playerId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ]);
-    if (s.error || i.error) {
+    if (d.error || i.error || n.error) {
       setFailed(true);
     } else {
-      setRow((s.data as ScoutingRow | null) ?? null);
+      setDetails((d.data as DetailsRow | null) ?? null);
       setInjuries((i.data ?? []) as InjuryRow[]);
+      setNotes((n.data as NotesRow | null) ?? null);
       setFailed(false);
     }
     setLoaded(true);
-  }, [playerId]);
+  }, [playerId, isAdmin]);
 
   useEffect(() => {
     load();
@@ -148,48 +167,73 @@ export default function ScoutingSection({
   );
   const games = gameDays.length;
   const cards = totals.yellow + totals.red;
-  const set = <K extends keyof ScoutingDraft>(k: K, v: ScoutingDraft[K]) =>
-    setDraft((d) => ({ ...d, [k]: v }));
+  const setD = <K extends keyof DetailsDraft>(k: K, v: DetailsDraft[K]) =>
+    setDDraft((d) => ({ ...d, [k]: v }));
+  const setN = <K extends keyof NotesDraft>(k: K, v: NotesDraft[K]) =>
+    setNDraft((d) => ({ ...d, [k]: v }));
 
-  async function onSave() {
+  function failMessage(
+    err: { code?: string; message?: string },
+    fallback: string,
+  ) {
+    return err.code === "42501" || /row-level security/i.test(err.message ?? "")
+      ? NOT_ALLOWED
+      : fallback;
+  }
+
+  async function onSaveDetails() {
     setError(null);
     setOk(null);
-    const res = rowFromDraft(playerId, draft);
-    if ("error" in res) {
-      setError(res.error);
-      return;
-    }
+    const res = detailsRow(playerId, dDraft);
+    if ("error" in res) return setError(res.error);
+    setBusy(true);
+    const { error: err } = await supabase
+      .from("player_details")
+      .upsert(res.row, { onConflict: "player_id" });
+    setBusy(false);
+    if (err)
+      return setError(
+        failMessage(
+          err,
+          "Could not save. Has migration 020 been run in Supabase?",
+        ),
+      );
+    setEditing(null);
+    setOk("Details saved.");
+    load();
+  }
+
+  async function onSaveNotes() {
+    setError(null);
+    setOk(null);
     setBusy(true);
     const { error: err } = await supabase
       .from("player_scouting")
-      .upsert(res.row, { onConflict: "player_id" });
+      .upsert(notesRow(playerId, nDraft), { onConflict: "player_id" });
     setBusy(false);
-    if (err) {
-      setError("Could not save. Has migration 018 been run in Supabase?");
-      return;
-    }
-    setEditing(false);
-    setOk("Scouting profile saved.");
+    if (err)
+      return setError(
+        failMessage(
+          err,
+          "Could not save. Has migration 020 been run in Supabase?",
+        ),
+      );
+    setEditing(null);
+    setOk("Scouting notes saved.");
     load();
   }
 
   async function onAddInjury() {
     setError(null);
     setOk(null);
-    if (!inj.injury.trim() || !inj.injured_on) {
-      setError("Enter what the injury was and the date it happened.");
-      return;
-    }
-    if (inj.returned_on && inj.returned_on < inj.injured_on) {
-      setError("The return date cannot be before the injury date.");
-      return;
-    }
+    if (!inj.injury.trim() || !inj.injured_on)
+      return setError("Enter what the injury was and the date it happened.");
+    if (inj.returned_on && inj.returned_on < inj.injured_on)
+      return setError("The return date cannot be before the injury date.");
     const missed =
       inj.games_missed.trim() === "" ? null : Number(inj.games_missed);
-    if (missed !== null && (!Number.isInteger(missed) || missed < 0)) {
-      setError("Games missed must be a whole number, 0 or more.");
-      return;
-    }
+    if (missed !== null && (!Number.isInteger(missed) || missed < 0))
+      return setError("Games missed must be a whole number, 0 or more.");
     setBusy(true);
     const { error: err } = await supabase.from("player_injury").insert({
       player_id: playerId,
@@ -201,12 +245,13 @@ export default function ScoutingSection({
       notes: inj.notes.trim() || null,
     });
     setBusy(false);
-    if (err) {
-      setError(
-        "Could not add the injury. Has migration 018 been run in Supabase?",
+    if (err)
+      return setError(
+        failMessage(
+          err,
+          "Could not add the injury. Has migration 020 been run in Supabase?",
+        ),
       );
-      return;
-    }
     setInj(EMPTY_INJURY);
     setAddingInjury(false);
     load();
@@ -218,7 +263,7 @@ export default function ScoutingSection({
       .from("player_injury")
       .delete()
       .eq("id", id);
-    if (err) setError("Could not delete the injury record.");
+    if (err) setError(failMessage(err, "Could not delete the injury record."));
     else load();
   }
 
@@ -226,15 +271,15 @@ export default function ScoutingSection({
   if (failed) {
     return (
       <section className="card p-5 text-sm text-pitch-700 print:hidden">
-        The scouting profile could not be loaded. Run migration 018 (scouting
-        profile) in Supabase, then refresh.
+        The extra player details could not be loaded. Run migration 020 in
+        Supabase, then refresh.
       </section>
     );
   }
 
   const heightWeight = [
-    row?.height_cm ? `${row.height_cm} cm` : null,
-    row?.weight_kg ? `${row.weight_kg} kg` : null,
+    details?.height_cm ? `${details.height_cm} cm` : null,
+    details?.weight_kg ? `${details.weight_kg} kg` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -242,158 +287,123 @@ export default function ScoutingSection({
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display font-bold text-xl">
-            Scouting &amp; age groups
+            {isAdmin ? "Scouting & age groups" : "Player details & fitness"}
           </h2>
           {!editing && (
-            <button
-              type="button"
-              className="btn-secondary print:hidden"
-              onClick={() => {
-                setDraft(draftFromRow(row));
-                setEditing(true);
-                setOk(null);
-              }}
-            >
-              <Pencil className="w-4 h-4" aria-hidden />{" "}
-              {row ? "Edit" : "Add details"}
-            </button>
+            <div className="flex flex-wrap gap-2 print:hidden">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setDDraft(detailsDraft(details));
+                  setEditing("details");
+                  setOk(null);
+                  setError(null);
+                }}
+              >
+                <Pencil className="w-4 h-4" aria-hidden /> Edit details
+              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setNDraft(notesDraft(notes));
+                    setEditing("notes");
+                    setOk(null);
+                    setError(null);
+                  }}
+                >
+                  <Pencil className="w-4 h-4" aria-hidden /> Edit scouting notes
+                </button>
+              )}
+            </div>
           )}
         </div>
-        <p className="text-xs text-pitch-600 print:hidden">
-          Visible to administrators only.
+        <p className="text-xs text-pitch-600 mt-1 print:hidden">
+          {isAdmin
+            ? "Details and injuries can also be filled in by the manager of the player’s club. Scouting notes are visible to administrators only."
+            : "Visible to administrators and to you as this player’s club manager."}
         </p>
       </div>
       <ErrorNote message={error} />
       <SuccessNote message={ok} />
 
-      {editing ? (
-        <section className="card p-5 space-y-5">
-          <fieldset className="space-y-3">
-            <legend className="font-semibold text-pitch-800">Origin</legend>
+      {editing === "details" && (
+        <section className="card p-5 space-y-4">
+          <h3 className="font-semibold text-pitch-800">Edit details</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Place of birth / home village">
               <input
                 className="input"
-                value={draft.birthplace}
-                onChange={(e) => set("birthplace", e.target.value)}
+                value={dDraft.birthplace}
+                onChange={(e) => setD("birthplace", e.target.value)}
               />
             </FormField>
-          </fieldset>
-
-          <fieldset className="space-y-3">
-            <legend className="font-semibold text-pitch-800">
-              Role &amp; fit
-            </legend>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="Secondary position">
-                <select
-                  className="input"
-                  value={draft.secondary_position}
-                  onChange={(e) =>
-                    set(
-                      "secondary_position",
-                      e.target.value as ScoutingDraft["secondary_position"],
-                    )
-                  }
-                >
-                  <option value="">None</option>
-                  {POSITIONS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Preferred foot">
-                <select
-                  className="input"
-                  value={draft.preferred_foot}
-                  onChange={(e) =>
-                    set(
-                      "preferred_foot",
-                      e.target.value as ScoutingDraft["preferred_foot"],
-                    )
-                  }
-                >
-                  <option value="">Not recorded</option>
-                  {(Object.keys(FOOT_LABEL) as Foot[]).map((f) => (
-                    <option key={f} value={f}>
-                      {FOOT_LABEL[f]}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
+            <FormField label="Secondary position">
+              <select
+                className="input"
+                value={dDraft.secondary_position}
+                onChange={(e) =>
+                  setD(
+                    "secondary_position",
+                    e.target.value as DetailsDraft["secondary_position"],
+                  )
+                }
+              >
+                <option value="">None</option>
+                {POSITIONS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Preferred foot">
+              <select
+                className="input"
+                value={dDraft.preferred_foot}
+                onChange={(e) =>
+                  setD(
+                    "preferred_foot",
+                    e.target.value as DetailsDraft["preferred_foot"],
+                  )
+                }
+              >
+                <option value="">Not recorded</option>
+                {(Object.keys(FOOT_LABEL) as Foot[]).map((f) => (
+                  <option key={f} value={f}>
+                    {FOOT_LABEL[f]}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <div className="grid grid-cols-2 gap-3">
               <FormField label="Height (cm)">
                 <input
                   className="input"
                   inputMode="numeric"
-                  value={draft.height_cm}
-                  onChange={(e) => set("height_cm", e.target.value)}
+                  value={dDraft.height_cm}
+                  onChange={(e) => setD("height_cm", e.target.value)}
                 />
               </FormField>
               <FormField label="Weight (kg)">
                 <input
                   className="input"
                   inputMode="numeric"
-                  value={draft.weight_kg}
-                  onChange={(e) => set("weight_kg", e.target.value)}
+                  value={dDraft.weight_kg}
+                  onChange={(e) => setD("weight_kg", e.target.value)}
                 />
               </FormField>
             </div>
-            <FormField label="System fit (e.g. can tuck in as a third centre-back, suits a high press)">
-              <textarea
-                className="input"
-                rows={2}
-                value={draft.system_fit_notes}
-                onChange={(e) => set("system_fit_notes", e.target.value)}
-              />
-            </FormField>
-          </fieldset>
-
-          <fieldset className="space-y-3">
-            <legend className="font-semibold text-pitch-800">
-              Intangibles
-            </legend>
-            <FormField label="Captaincy experience">
-              <input
-                className="input"
-                value={draft.captaincy}
-                onChange={(e) => set("captaincy", e.target.value)}
-                placeholder="e.g. Club captain 2025–26"
-              />
-            </FormField>
-            <FormField label="Leadership, character, coachability">
-              <textarea
-                className="input"
-                rows={2}
-                value={draft.leadership_notes}
-                onChange={(e) => set("leadership_notes", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Big-game experience (finals, knockout, relegation or title races)">
-              <textarea
-                className="input"
-                rows={2}
-                value={draft.big_game_notes}
-                onChange={(e) => set("big_game_notes", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Scouting notes">
-              <textarea
-                className="input"
-                rows={3}
-                value={draft.scouting_notes}
-                onChange={(e) => set("scouting_notes", e.target.value)}
-              />
-            </FormField>
-          </fieldset>
-
+          </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               className="btn-primary"
-              onClick={onSave}
+              onClick={onSaveDetails}
               disabled={busy}
             >
               {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}{" "}
@@ -403,7 +413,7 @@ export default function ScoutingSection({
               type="button"
               className="btn-secondary"
               onClick={() => {
-                setEditing(false);
+                setEditing(null);
                 setError(null);
               }}
               disabled={busy}
@@ -412,7 +422,79 @@ export default function ScoutingSection({
             </button>
           </div>
         </section>
-      ) : (
+      )}
+
+      {editing === "notes" && isAdmin && (
+        <section className="card p-5 space-y-4">
+          <h3 className="font-semibold text-pitch-800">
+            Edit scouting notes (administrators only)
+          </h3>
+          <FormField label="System fit (e.g. can tuck in as a third centre-back, suits a high press)">
+            <textarea
+              className="input"
+              rows={2}
+              value={nDraft.system_fit_notes}
+              onChange={(e) => setN("system_fit_notes", e.target.value)}
+            />
+          </FormField>
+          <FormField label="Captaincy experience">
+            <input
+              className="input"
+              value={nDraft.captaincy}
+              onChange={(e) => setN("captaincy", e.target.value)}
+              placeholder="e.g. Club captain 2025–26"
+            />
+          </FormField>
+          <FormField label="Leadership, character, coachability">
+            <textarea
+              className="input"
+              rows={2}
+              value={nDraft.leadership_notes}
+              onChange={(e) => setN("leadership_notes", e.target.value)}
+            />
+          </FormField>
+          <FormField label="Big-game experience (finals, knockout, relegation or title races)">
+            <textarea
+              className="input"
+              rows={2}
+              value={nDraft.big_game_notes}
+              onChange={(e) => setN("big_game_notes", e.target.value)}
+            />
+          </FormField>
+          <FormField label="Scouting notes">
+            <textarea
+              className="input"
+              rows={3}
+              value={nDraft.scouting_notes}
+              onChange={(e) => setN("scouting_notes", e.target.value)}
+            />
+          </FormField>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={onSaveNotes}
+              disabled={busy}
+            >
+              {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}{" "}
+              Save
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setEditing(null);
+                setError(null);
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
+
+      {!editing && (
         <>
           <section className="card p-5 space-y-4">
             <h3 className="font-semibold text-pitch-800">
@@ -439,7 +521,7 @@ export default function ScoutingSection({
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Fact label="Date of birth">{formatDay(dob)}</Fact>
               <Fact label="Place of birth / home village">
-                {row?.birthplace}
+                {details?.birthplace}
               </Fact>
             </dl>
           </section>
@@ -643,16 +725,20 @@ export default function ScoutingSection({
                 {positionLabel(position) ?? ""}
               </Fact>
               <Fact label="Secondary position">
-                {positionLabel(row?.secondary_position) ?? ""}
+                {positionLabel(details?.secondary_position) ?? ""}
               </Fact>
               <Fact label="Preferred foot">
-                {row?.preferred_foot ? FOOT_LABEL[row.preferred_foot] : ""}
+                {details?.preferred_foot
+                  ? FOOT_LABEL[details.preferred_foot]
+                  : ""}
               </Fact>
               <Fact label="Height / weight">{heightWeight}</Fact>
             </dl>
-            <dl>
-              <Notes label="System fit" text={row?.system_fit_notes} />
-            </dl>
+            {isAdmin && (
+              <dl>
+                <Notes label="System fit" text={notes?.system_fit_notes} />
+              </dl>
+            )}
             <div className="grid grid-cols-3 gap-2 text-center">
               {[
                 ["Goals per game", perGame(games, totals.goals)],
@@ -672,18 +758,23 @@ export default function ScoutingSection({
             </p>
           </section>
 
-          <section className="card p-5 space-y-3">
-            <h3 className="font-semibold text-pitch-800">Intangibles</h3>
-            <dl className="space-y-3">
-              <Notes label="Captaincy" text={row?.captaincy} />
-              <Notes
-                label="Leadership & character"
-                text={row?.leadership_notes}
-              />
-              <Notes label="Big-game experience" text={row?.big_game_notes} />
-              <Notes label="Scouting notes" text={row?.scouting_notes} />
-            </dl>
-          </section>
+          {isAdmin && (
+            <section className="card p-5 space-y-3">
+              <h3 className="font-semibold text-pitch-800">Intangibles</h3>
+              <dl className="space-y-3">
+                <Notes label="Captaincy" text={notes?.captaincy} />
+                <Notes
+                  label="Leadership & character"
+                  text={notes?.leadership_notes}
+                />
+                <Notes
+                  label="Big-game experience"
+                  text={notes?.big_game_notes}
+                />
+                <Notes label="Scouting notes" text={notes?.scouting_notes} />
+              </dl>
+            </section>
+          )}
         </>
       )}
     </div>
