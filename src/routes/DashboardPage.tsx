@@ -13,7 +13,9 @@ import {
   ShieldAlert,
   RefreshCw,
   Download,
+  Megaphone,
 } from 'lucide-react';
+import AnnouncementsPanel from '@/components/AnnouncementsPanel';
 
 const roleLabels: Record<string, string> = {
   admin: 'Administrator',
@@ -109,6 +111,13 @@ export default function DashboardPage() {
       allowed: isAdmin || isManager,
     },
     {
+      label: 'Announcements',
+      desc: 'Post notices on the home page, for everyone or for staff only.',
+      icon: Megaphone,
+      to: '/admin/announcements',
+      allowed: isAdmin,
+    },
+    {
       label: 'Export & print',
       desc: isAdmin
         ? 'Download player details and records (with photos) for another database, or print them.'
@@ -147,6 +156,8 @@ export default function DashboardPage() {
           </p>
         </div>
       )}
+
+      <AnnouncementsPanel />
 
       {tools.length > 0 && (
       <section>

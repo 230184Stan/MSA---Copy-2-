@@ -1,3 +1,4 @@
+import ClubLogo from '@/components/ClubLogo';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
@@ -17,8 +18,8 @@ interface FixtureRow {
   status: MatchStatus;
   home_score: number | null;
   away_score: number | null;
-  home_team: { name: string; club: string | null };
-  away_team: { name: string; club: string | null };
+  home_team: { name: string; club: string | null; logo: string | null };
+  away_team: { name: string; club: string | null; logo: string | null };
   competition: { id: string; name: string; season: SeasonInfo; division: DivisionInfo };
 }
 
@@ -33,8 +34,8 @@ function toFixture(raw: unknown): FixtureRow | null {
     status: MatchStatus;
     home_score: number | null;
     away_score: number | null;
-    home_team: Embedded<{ name: string; club: Embedded<{ name: string }> }>;
-    away_team: Embedded<{ name: string; club: Embedded<{ name: string }> }>;
+    home_team: Embedded<{ name: string; club: Embedded<{ name: string; logo_path: string | null }> }>;
+    away_team: Embedded<{ name: string; club: Embedded<{ name: string; logo_path: string | null }> }>;
     competition: Embedded<{
       id: string;
       name: string;
@@ -55,8 +56,8 @@ function toFixture(raw: unknown): FixtureRow | null {
     status: r.status,
     home_score: r.home_score,
     away_score: r.away_score,
-    home_team: { name: home.name, club: one(home.club)?.name ?? null },
-    away_team: { name: away.name, club: one(away.club)?.name ?? null },
+    home_team: { name: home.name, club: one(home.club)?.name ?? null, logo: one(home.club)?.logo_path ?? null },
+    away_team: { name: away.name, club: one(away.club)?.name ?? null, logo: one(away.club)?.logo_path ?? null },
     competition: { id: comp.id, name: comp.name, season, division },
   };
 }
@@ -98,11 +99,14 @@ function MatchRow({ m }: { m: FixtureRow }) {
       {/* Phone: home team, score/time, away team stacked and centred so full names show.
           From sm up: home | score | away on one row. */}
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-        <div className="min-w-0 text-center sm:flex-1 sm:text-right">
-          <p className="font-semibold break-words sm:truncate">{m.home_team.name}</p>
-          {m.home_team.club && (
-            <p className="text-xs text-pitch-500 break-words sm:truncate">{m.home_team.club}</p>
-          )}
+        <div className="min-w-0 flex items-center justify-center gap-3 sm:flex-1 sm:justify-end">
+          <ClubLogo name={m.home_team.club ?? m.home_team.name} path={m.home_team.logo} size="md" />
+          <div className="min-w-0 text-left sm:order-first sm:text-right">
+            <p className="font-semibold break-words sm:truncate">{m.home_team.name}</p>
+            {m.home_team.club && (
+              <p className="text-xs text-pitch-500 break-words sm:truncate">{m.home_team.club}</p>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center justify-center gap-3 sm:flex-col sm:gap-0 sm:px-3 shrink-0">
@@ -118,11 +122,14 @@ function MatchRow({ m }: { m: FixtureRow }) {
           </div>
         </div>
 
-        <div className="min-w-0 text-center sm:flex-1 sm:text-left">
-          <p className="font-semibold break-words sm:truncate">{m.away_team.name}</p>
-          {m.away_team.club && (
-            <p className="text-xs text-pitch-500 break-words sm:truncate">{m.away_team.club}</p>
-          )}
+        <div className="min-w-0 flex items-center justify-center gap-3 sm:flex-1 sm:justify-start">
+          <ClubLogo name={m.away_team.club ?? m.away_team.name} path={m.away_team.logo} size="md" />
+          <div className="min-w-0 text-left">
+            <p className="font-semibold break-words sm:truncate">{m.away_team.name}</p>
+            {m.away_team.club && (
+              <p className="text-xs text-pitch-500 break-words sm:truncate">{m.away_team.club}</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -161,7 +168,7 @@ export default function FixturesPage() {
       const { data, error: err } = await supabase
         .from('match')
         .select(
-          'id, kickoff_at, venue, status, home_score, away_score, home_team:home_team_id(name, club:club_id(name)), away_team:away_team_id(name, club:club_id(name)), competition:competition_id(id, name, season:season_id(id, name, is_current), division:division_id(id, name, level))'
+          'id, kickoff_at, venue, status, home_score, away_score, home_team:home_team_id(name, club:club_id(name, logo_path)), away_team:away_team_id(name, club:club_id(name, logo_path)), competition:competition_id(id, name, season:season_id(id, name, is_current), division:division_id(id, name, level))'
         )
         .eq('published', true)
         .order('kickoff_at', { ascending: true });

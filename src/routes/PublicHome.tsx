@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import type { Division } from '@/lib/types';
 import { Trophy, Users, Calendar, ChevronRight, AlertCircle } from 'lucide-react';
+import AnnouncementsPanel from '@/components/AnnouncementsPanel';
 
 export default function PublicHome() {
   const [divisions, setDivisions] = useState<Division[]>([]);
@@ -50,6 +51,8 @@ export default function PublicHome() {
           </Link>
         </div>
       </section>
+
+      <AnnouncementsPanel />
 
       {/* Quick links */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
