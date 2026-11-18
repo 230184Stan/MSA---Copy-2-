@@ -28,6 +28,7 @@ const PlayerProfilePage = lazy(() => import('@/routes/PlayerProfilePage'));
 const DisciplinePage = lazy(() => import('@/routes/DisciplinePage'));
 const MatchEventsPage = lazy(() => import('@/routes/MatchEventsPage'));
 const ExportPage = lazy(() => import('@/routes/ExportPage'));
+const AnnouncementsPage = lazy(() => import('@/routes/AnnouncementsPage'));
 const RolloverPage = lazy(() => import('@/routes/RolloverPage'));
 
 function PageLoading() {
@@ -153,6 +154,14 @@ export default function App() {
               />
 
               {/* Admins only (admin always passes; an empty list lets nobody else in) */}
+              <Route
+                path="admin/announcements"
+                element={
+                  <ProtectedRoute roles={[]}>
+                    <AnnouncementsPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="admin/seasons"
                 element={

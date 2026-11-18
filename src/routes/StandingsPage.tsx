@@ -5,6 +5,7 @@ import type { StandingWithTeam } from '@/lib/types';
 import { one } from '@/lib/util';
 import { ArrowLeft, AlertCircle, Trophy } from 'lucide-react';
 import DivisionFilter from '@/components/DivisionFilter';
+import ClubLogo from '@/components/ClubLogo';
 import { compareDivisions, sortSeasons } from '@/lib/divisions';
 import type { DivisionInfo, SeasonInfo } from '@/lib/divisions';
 
@@ -52,8 +53,13 @@ function StandingsTable({ rows }: { rows: StandingWithTeam[] }) {
             >
               <td className="py-3 px-3 text-center font-semibold text-pitch-500">{i + 1}</td>
               <td className="py-3 px-3">
-                <p className="font-semibold">{r.team.name}</p>
-                {r.club.name && <p className="text-xs text-pitch-500">{r.club.name}</p>}
+                <div className="flex items-center gap-3">
+                  <ClubLogo name={r.club.name || r.team.name} path={r.club.logo_path} size="sm" />
+                  <div className="min-w-0">
+                    <p className="font-semibold">{r.team.name}</p>
+                    {r.club.name && <p className="text-xs text-pitch-500">{r.club.name}</p>}
+                  </div>
+                </div>
               </td>
               <td className="py-3 px-2 text-center tabular-nums">{r.played}</td>
               <td className="py-3 px-2 text-center tabular-nums">{r.wins}</td>
@@ -78,6 +84,7 @@ function StandingsTable({ rows }: { rows: StandingWithTeam[] }) {
           <li key={r.team_id} className="p-4">
             <div className="flex items-center gap-3">
               <span className="w-6 text-center font-bold text-pitch-500 shrink-0">{i + 1}</span>
+              <ClubLogo name={r.club.name || r.team.name} path={r.club.logo_path} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="font-semibold truncate">{r.team.name}</p>
                 {r.club.name && <p className="text-xs text-pitch-500 truncate">{r.club.name}</p>}
@@ -218,11 +225,15 @@ export default function StandingsPage() {
       const clubIds = [...new Set([...teamInfo.values()].map((t) => t.club_id))];
       const { data: clubs } = await supabase
         .from('club')
-        .select('id, name')
+        .select('id, name, logo_path')
         .in('id', clubIds.length ? clubIds : ['00000000-0000-0000-0000-000000000000']);
       if (cancelled) return;
       const clubName = new Map<string, string>();
-      for (const c of clubs ?? []) clubName.set(c.id, c.name);
+      const clubLogo = new Map<string, string | null>();
+      for (const c of clubs ?? []) {
+        clubName.set(c.id, c.name);
+        clubLogo.set(c.id, c.logo_path ?? null);
+      }
 
       const toRow = (
         competition_id: string,
@@ -243,7 +254,11 @@ export default function StandingsPage() {
           points: 0,
           ...stats,
           team: { id: team_id, name: t?.name ?? 'Unknown', club_id: t?.club_id ?? '' },
-          club: { id: t?.club_id ?? '', name: clubName.get(t?.club_id ?? '') ?? '' },
+          club: {
+            id: t?.club_id ?? '',
+            name: clubName.get(t?.club_id ?? '') ?? '',
+            logo_path: clubLogo.get(t?.club_id ?? '') ?? null,
+          },
         };
       };
 

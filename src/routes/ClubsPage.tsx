@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, Plus, Loader2, Shield, Users } from 'lucide-react';
+import { Building2, Plus, Loader2, Shield, Users, ImagePlus, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
 import type { Club, Team, Division } from '@/lib/types';
 import { PageHeader, ErrorNote, SuccessNote, LoadingBlock, Field } from '@/components/ui';
 import { errMsg } from '@/lib/util';
+import ClubLogo from '@/components/ClubLogo';
+import { removeClubLogo, uploadClubLogo } from '@/lib/clubLogos';
 
 export default function ClubsPage() {
   const { profile } = useAuth();
@@ -22,6 +24,7 @@ export default function ClubsPage() {
   const [clubForm, setClubForm] = useState({ name: '', founded: '', contact: '' });
   const [teamForm, setTeamForm] = useState({ club_id: '', name: '', division_id: '' });
   const [busy, setBusy] = useState(false);
+  const [logoBusy, setLogoBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [c, t, d] = await Promise.all([
@@ -70,6 +73,36 @@ export default function ClubsPage() {
     setOk(`Club "${clubForm.name.trim()}" added.`);
     setClubForm({ name: '', founded: '', contact: '' });
     load();
+  }
+
+  async function onLogoPicked(club: Club, file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    setOk(null);
+    setLogoBusy(club.id);
+    try {
+      await uploadClubLogo(club.id, file, club.logo_path);
+      setOk(`Logo updated for ${club.name}.`);
+      await load();
+    } catch (err) {
+      setError(errMsg(err as { message?: string }, 'Could not upload the logo.'));
+    }
+    setLogoBusy(null);
+  }
+
+  async function onLogoRemove(club: Club) {
+    if (!club.logo_path || !window.confirm(`Remove the logo for ${club.name}?`)) return;
+    setError(null);
+    setOk(null);
+    setLogoBusy(club.id);
+    try {
+      await removeClubLogo(club.id, club.logo_path);
+      setOk(`Logo removed for ${club.name}.`);
+      await load();
+    } catch (err) {
+      setError(errMsg(err as { message?: string }, 'Could not remove the logo.'));
+    }
+    setLogoBusy(null);
   }
 
   async function addTeam(e: React.FormEvent) {
@@ -218,7 +251,8 @@ export default function ClubsPage() {
               return (
                 <article key={club.id} className="card p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
+                    <ClubLogo name={club.name} path={club.logo_path} size="md" />
+                    <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-lg">
                         <Link to={`/clubs/${club.id}`} className="hover:text-pitch-600 hover:underline">
                           {club.name}
@@ -233,12 +267,46 @@ export default function ClubsPage() {
                       {clubTeams.length} team{clubTeams.length === 1 ? '' : 's'}
                     </span>
                   </div>
-                  <Link
-                    to={`/clubs/${club.id}`}
-                    className="mt-3 inline-flex items-center gap-1 text-pitch-700 font-medium min-h-[44px] hover:underline"
-                  >
-                    <Users className="w-4 h-4" aria-hidden /> View players &amp; records
-                  </Link>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <Link
+                      to={`/clubs/${club.id}`}
+                      className="inline-flex items-center gap-1 text-pitch-700 font-medium min-h-[44px] hover:underline"
+                    >
+                      <Users className="w-4 h-4" aria-hidden /> View players &amp; records
+                    </Link>
+                    {isAdmin && (
+                      <>
+                        <label className="inline-flex items-center gap-1 text-pitch-700 font-medium min-h-[44px] cursor-pointer hover:underline">
+                          {logoBusy === club.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                          ) : (
+                            <ImagePlus className="w-4 h-4" aria-hidden />
+                          )}
+                          {club.logo_path ? 'Change logo' : 'Add logo'}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="sr-only"
+                            disabled={logoBusy !== null}
+                            onChange={(e) => {
+                              onLogoPicked(club, e.target.files?.[0]);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                        {club.logo_path && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-ember-700 font-medium min-h-[44px] hover:underline"
+                            onClick={() => onLogoRemove(club)}
+                            disabled={logoBusy !== null}
+                          >
+                            <Trash2 className="w-4 h-4" aria-hidden /> Remove logo
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                   {clubTeams.length > 0 && (
                     <ul className="mt-1 divide-y divide-pitch-100">
                       {clubTeams.map((t) => (

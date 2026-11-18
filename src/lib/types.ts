@@ -30,6 +30,7 @@ export interface Club {
   name: string;
   founded: number | null;
   contact: string | null;
+  logo_path: string | null;
   created_at: string;
 }
 
@@ -112,5 +113,5 @@ export interface StandingRow {
 
 export interface StandingWithTeam extends StandingRow {
   team: { id: string; name: string; club_id: string };
-  club: { id: string; name: string };
+  club: { id: string; name: string; logo_path?: string | null };
 }

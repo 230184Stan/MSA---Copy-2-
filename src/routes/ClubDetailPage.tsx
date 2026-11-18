@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth';
 import { PageHeader, ErrorNote, LoadingBlock } from '@/components/ui';
 import PlayerAvatar from '@/components/PlayerAvatar';
+import ClubLogo from '@/components/ClubLogo';
 import { usePlayerPhotoUrls } from '@/lib/photos';
 import { fetchDisciplineTotals, type DisciplineTotals } from '@/lib/playerRecord';
 import { calcAge, formatDay, one } from '@/lib/util';
@@ -15,6 +16,7 @@ interface ClubInfo {
   name: string;
   founded: number | null;
   contact: string | null;
+  logo_path: string | null;
 }
 
 interface TeamInfo {
@@ -59,7 +61,7 @@ export default function ClubDetailPage() {
       return;
     }
     const [clubRes, teamRes] = await Promise.all([
-      supabase.from('club').select('id, name, founded, contact').eq('id', id).maybeSingle(),
+      supabase.from('club').select('id, name, founded, contact, logo_path').eq('id', id).maybeSingle(),
       supabase
         .from('team')
         .select('id, name, division:division_id(name)')
@@ -148,26 +150,28 @@ export default function ClubDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="print:hidden">
-        <PageHeader
-          icon={Users}
-          title={club?.name ?? 'Club'}
-          intro={
-            club
-              ? `${club.founded ? `Founded ${club.founded}` : 'Founding year not set'}${club.contact ? ` · ${club.contact}` : ''}`
-              : undefined
-          }
-          backTo="/admin/clubs"
-          backLabel="Clubs & teams"
-        />
+      <div className="print:hidden space-y-3">
+        <PageHeader icon={Users} title={club?.name ?? 'Club'} backTo="/admin/clubs" backLabel="Clubs & teams" />
+        {club && (
+          <div className="flex items-center gap-4">
+            <ClubLogo name={club.name} path={club.logo_path} size="lg" />
+            <p className="text-pitch-700">
+              {club.founded ? `Founded ${club.founded}` : 'Founding year not set'}
+              {club.contact ? ` · ${club.contact}` : ''}
+            </p>
+          </div>
+        )}
       </div>
 
       {club && (
-        <div className="hidden print:block border-b-2 border-pitch-700 pb-2">
-          <p className="font-display font-bold text-lg">Madang Soccer Association · {club.name} squad list</p>
-          <p className="text-xs">
-            Printed {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
+        <div className="hidden print:flex items-center gap-3 border-b-2 border-pitch-700 pb-2">
+          <ClubLogo name={club.name} path={club.logo_path} size="md" />
+          <div>
+            <p className="font-display font-bold text-lg">Madang Soccer Association · {club.name} squad list</p>
+            <p className="text-xs">
+              Printed {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
         </div>
       )}
 
